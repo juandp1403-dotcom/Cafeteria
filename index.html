@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Prevent benign dev-only Vite HMR websocket drops in containerized environments -->
+    <script>
+      (function() {
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && (event.reason || event.detail);
+          var msg = (reason && (reason.message || reason.toString())) || '';
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('websocket') !== -1 || msg.indexOf('vite') !== -1) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          var msg = (event && (event.message || '')) + '';
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('websocket') !== -1) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        var NativeWebSocket = window.WebSocket;
+        if (NativeWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var isHmr = false;
+            if (typeof protocols === 'string' && (protocols === 'vite-hmr' || protocols === 'vite-ping')) {
+              isHmr = true;
+            } else if (Array.isArray(protocols) && (protocols.indexOf('vite-hmr') !== -1 || protocols.indexOf('vite-ping') !== -1)) {
+              isHmr = true;
+            } else if (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('vite-hmr') !== -1)) {
+              isHmr = true;
+            }
+
+            if (isHmr) {
+              var target = new EventTarget();
+              var dummy = {
+                binaryType: 'blob',
+                bufferedAmount: 0,
+                extensions: '',
+                protocol: typeof protocols === 'string' ? protocols : 'vite-hmr',
+                readyState: 1,
+                url: url,
+                send: function() {},
+                close: function() {
+                  dummy.readyState = 3;
+                  var ev = new Event('close');
+                  target.dispatchEvent(ev);
+                  if (typeof dummy.onclose === 'function') dummy.onclose(ev);
+                },
+                addEventListener: target.addEventListener.bind(target),
+                removeEventListener: target.removeEventListener.bind(target),
+                dispatchEvent: target.dispatchEvent.bind(target)
+              };
+
+              setTimeout(function() {
+                var openEv = new Event('open');
+                target.dispatchEvent(openEv);
+                if (typeof dummy.onopen === 'function') dummy.onopen(openEv);
+              }, 0);
+
+              return dummy;
+            }
+
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cafetería CGAO SENA</title>
+    <meta name="description" content="Sistema Integral de Alimentación y Pedidos en Tiempo Real del Centro CGAO Vélez - Regional Santander SENA 2026" />
+    <meta property="og:title" content="Cafetería CGAO SENA" />
+    <meta property="og:description" content="Sistema Integral de Alimentación y Pedidos en Tiempo Real del Centro CGAO Vélez - Regional Santander SENA 2026" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="bg-[#090d16] text-[#dfe2ef] antialiased selection:bg-[#39a900]/30 selection:text-white min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

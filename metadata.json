@@ -1,0 +1,6 @@
+{
+  "name": "Cafetería CGAO SENA",
+  "description": "Sistema Integral de Alimentación y Pedidos en Tiempo Real del Centro CGAO Vélez - Regional Santander SENA 2026",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
