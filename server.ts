@@ -8,7 +8,7 @@ dotenv.config();
 process.env.DISABLE_HMR = 'true';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Security Hardening
 app.disable('x-powered-by');
@@ -24,6 +24,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root & Healthcheck Endpoints
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'Cafetería SENA CGAO Backend' });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', service: 'Cafetería SENA CGAO Backend' });
+});
+
 // Initialize server-side Supabase client with SECRET KEY
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://avwoaoxbxgbgvgqgvizo.supabase.co';
 const rawSecret = process.env.SUPABASE_SECRET_KEY || '';
@@ -33,11 +42,7 @@ const SUPABASE_PUBLISHABLE_KEY = (rawPub.length >= 35) ? rawPub : 'sb_publishabl
 
 const supabaseServer = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
-});
-
-// API Routes
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Cafetería SENA CGAO Backend' });
+  realtime: { createClient: () => null as any },
 });
 
 // Supabase Status Diagnostic Endpoint
