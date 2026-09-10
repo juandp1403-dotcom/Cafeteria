@@ -1,12 +1,11 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
 import * as bcrypt from 'bcryptjs';
 import { scryptSync, pbkdf2Sync, timingSafeEqual } from 'crypto';
 
-dotenv.config();
 process.env.DISABLE_HMR = 'true';
 
 const app = express();
