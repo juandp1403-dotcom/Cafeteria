@@ -24,11 +24,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root & Healthcheck Endpoints
-app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'Cafetería SENA CGAO Backend' });
-});
-
+// Healthcheck Endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'Cafetería SENA CGAO Backend' });
 });
