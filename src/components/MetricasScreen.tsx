@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ProductItem } from '../types';
+import { fetchVentasFromSupabase } from '../lib/supabase';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -38,10 +39,24 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
     return products.filter((p) => p.stock <= (p.alertaStock || 8));
   }, [products]);
 
-  // Pedidos despachados hoy (total delivered today)
-  const pedidosDespachadosHoy = 148;
-  const totalVentasDia = 1245000;
+  // Pedidos despachados hoy (total delivered today) -- sincronizado con Supabase
+  const [pedidosDespachadosHoy, setPedidosDespachadosHoy] = useState(148);
+  const [totalVentasDia, setTotalVentasDia] = useState(1245000);
   const satisfaccionGeneral = 98.4;
+
+  // Cargar KPIs del día desde la tabla real `venta`
+  useEffect(() => {
+    fetchVentasFromSupabase().then((ventas) => {
+      if (!ventas || ventas.length === 0) return;
+      const hoy = ventas.filter((v) => v.fecha === 'Hoy');
+      setPedidosDespachadosHoy(hoy.filter((v) => v.estadoDb === 'Entregado').length);
+      setTotalVentasDia(
+        hoy
+          .filter((v) => v.estado !== 'pendiente' && v.estado !== 'anulado')
+          .reduce((acc, v) => acc + v.total, 0)
+      );
+    });
+  }, []);
 
   // Chart Data 1: Ventas en la Semana Laboral (Lunes a Viernes)
   const diasSemanaSales = [

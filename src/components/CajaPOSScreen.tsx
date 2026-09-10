@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { POSOrder, ProductItem, UserRole } from '../types';
-import { INITIAL_POS_ORDERS, RECENT_PAID_ORDERS } from '../data/posOrders';
+import { fetchVentasFromSupabase, updateVentaEstadoToSupabase } from '../lib/supabase';
 import { 
   Search, 
   Wallet, 
@@ -32,11 +32,11 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
   userRole = 'Cajero', 
   onPrintTicket 
 }) => {
-  const [orders, setOrders] = useState<POSOrder[]>(INITIAL_POS_ORDERS);
-  const [recentPaid, setRecentPaid] = useState(RECENT_PAID_ORDERS);
-  const [recaudoManana, setRecaudoManana] = useState(485000);
-  const [efectivoEnCaja, setEfectivoEnCaja] = useState(245000);
-  const [digitalTarjeta, setDigitalTarjeta] = useState(240000);
+  const [orders, setOrders] = useState<POSOrder[]>([]);
+  const [recentPaid, setRecentPaid] = useState<{ id: string; turno: string; nombre: string; hora: string; metodo: string; total: number; fecha: string }[]>([]);
+  const [recaudoManana, setRecaudoManana] = useState(0);
+  const [efectivoEnCaja, setEfectivoEnCaja] = useState(0);
+  const [digitalTarjeta, setDigitalTarjeta] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<'todos' | 'efectivo' | 'nequi' | 'datafono'>('todos');
   
@@ -46,6 +46,35 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const isReadOnly = userRole === 'Auditor';
+
+  // Cargar las ventas reales (venta + detalle + cliente) desde Supabase
+  useEffect(() => {
+    fetchVentasFromSupabase().then((ventas) => {
+      if (!ventas || ventas.length === 0) return;
+      setOrders((prev) => (prev.length === 0 ? ventas : prev));
+      setRecentPaid(
+        ventas
+          .filter((v) => v.estado === 'cobrado')
+          .slice(0, 8)
+          .map((v) => ({
+            id: `rec-${v.id}`,
+            turno: v.numeroTurno,
+            nombre: v.clienteNombre,
+            hora: new Date(v.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+            metodo: v.metodoPago,
+            total: v.total,
+            fecha: v.fecha,
+          }))
+      );
+
+      const pagadasHoy = ventas.filter((v) => v.estado === 'cobrado' && v.fecha === 'Hoy');
+      const totalHoy = pagadasHoy.reduce((acc, v) => acc + v.total, 0);
+      const efectivoHoy = pagadasHoy.filter((v) => v.metodoPago === 'Efectivo').reduce((acc, v) => acc + v.total, 0);
+      setRecaudoManana(totalHoy);
+      setEfectivoEnCaja(efectivoHoy);
+      setDigitalTarjeta(totalHoy - efectivoHoy);
+    });
+  }, []);
 
   // Products metrics requested:
   // "cambia el tiempo promedio de transaccion por productos agotados, el canal websoccket pos por un productos en alerta amarilla"
@@ -70,6 +99,10 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
 
     soundEngine.playCashRegisterBeep();
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, estado: 'cobrado' as const } : o)));
+
+    if (order.idventaDb) {
+      updateVentaEstadoToSupabase(order.idventaDb, 'Pagado');
+    }
 
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
@@ -103,6 +136,12 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
       return;
     }
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, estado: 'anulado' as const } : o)));
+
+    const target = orders.find((o) => o.id === orderId);
+    if (target?.idventaDb) {
+      updateVentaEstadoToSupabase(target.idventaDb, 'Cancelado');
+    }
+
     showToast('Orden marcada como anulada en el módulo de caja.');
   };
 

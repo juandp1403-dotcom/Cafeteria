@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { UserRole } from '../types';
+import { fetchTicketsDespachoFromSupabase, updateVentaEstadoToSupabase } from '../lib/supabase';
 import { 
   ChefHat, 
   Flame, 
@@ -19,6 +20,7 @@ import { soundEngine } from '../utils/sound';
 
 export interface DespachoTicket {
   id: string;
+  idventaDb?: number;
   turno: string;
   clienteNombre: string;
   documento?: string;
@@ -35,145 +37,60 @@ interface DespachoScreenProps {
   userRole?: UserRole;
 }
 
+function estadoDbParaAvance(estado: DespachoTicket['estado']): 'En Preparacion' | 'Listo para Entrega' | 'Entregado' {
+  if (estado === 'preparacion') return 'En Preparacion';
+  if (estado === 'listo') return 'Listo para Entrega';
+  return 'Entregado';
+}
+
+function estadoDbParaRevertir(estado: DespachoTicket['estado']): 'En Preparacion' | 'Listo para Entrega' | 'Entregado' | 'Pagado' {
+  switch (estado) {
+    case 'preparacion': return 'En Preparacion';
+    case 'listo': return 'Listo para Entrega';
+    case 'entregado': return 'Entregado';
+    default: return 'Pagado';
+  }
+}
+
 export const DespachoScreen: React.FC<DespachoScreenProps> = ({ userRole = 'Despachador' }) => {
   const isReadOnly = userRole === 'Auditor';
   const [dateFilter, setDateFilter] = useState<'hoy' | 'semana' | 'mes'>('hoy');
 
-  const [tickets, setTickets] = useState<DespachoTicket[]>([
-    {
-      id: 'k-042',
-      turno: '#042',
-      clienteNombre: 'Juan Carlos Pérez Gómez',
-      documento: '1.020.304.050',
-      ficha: '2671234',
-      programa: 'ADSO / Software CGAO',
-      tipo: 'Almuerzo',
-      tiempoMin: 4,
-      fecha: 'Hoy',
-      estado: 'preparacion',
-      items: [
-        { cantidad: 1, nombre: 'Almuerzo Ejecutivo SENA', detalle: 'Pechuga grille + Arroz finas hierbas + Ensalada fresca' },
-        { cantidad: 1, nombre: 'Jugo de Naranja 16oz', detalle: '100% natural, sin azúcar' },
-      ],
-    },
-    {
-      id: 'k-043',
-      turno: '#043',
-      clienteNombre: 'Mariana Ospina Gómez',
-      documento: '1.020.489.501',
-      ficha: '2558190',
-      programa: 'Gastronomía y Alimentos',
-      tipo: 'Almuerzo',
-      tiempoMin: 6,
-      fecha: 'Hoy',
-      estado: 'preparacion',
-      items: [
-        { cantidad: 1, nombre: 'Almuerzo Ejecutivo SENA', detalle: '¡OJO! Sin ensalada con cebolla' },
-        { cantidad: 1, nombre: 'Limonada Natural' },
-      ],
-    },
-    {
-      id: 'k-044',
-      turno: '#044',
-      clienteNombre: 'Andrés Felipe Castro',
-      documento: '80.194.821',
-      ficha: 'Planta Docente',
-      programa: 'Instructor ADSO',
-      tipo: 'Rápida',
-      tiempoMin: 2,
-      fecha: 'Hoy',
-      estado: 'entrante',
-      items: [
-        { cantidad: 1, nombre: 'Hamburguesa Artesanal', detalle: 'Vegetales frescos de la huerta CGAO' },
-        { cantidad: 1, nombre: 'Café Americano CGAO' },
-      ],
-    },
-    {
-      id: 'k-045',
-      turno: '#045',
-      clienteNombre: 'Daniela Restrepo Ruiz',
-      documento: '1.031.940.221',
-      ficha: '2710443',
-      programa: 'Gestión Agroempresarial',
-      tipo: 'Rápida',
-      tiempoMin: 1,
-      fecha: 'Hoy',
-      estado: 'entrante',
-      items: [
-        { cantidad: 1, nombre: 'Pastel de Pollo Hojaldrado' },
-        { cantidad: 1, nombre: 'Pandebono Tradicional' },
-      ],
-    },
-    {
-      id: 'k-041',
-      turno: '#041',
-      clienteNombre: 'Camila Morales',
-      documento: '1.014.298.102',
-      ficha: '2694120',
-      programa: 'ADSO',
-      tipo: 'Bebidas',
-      tiempoMin: 8,
-      fecha: 'Hoy',
-      estado: 'listo',
-      items: [
-        { cantidad: 2, nombre: 'Empanada de Carne' },
-        { cantidad: 1, nombre: 'Jugo de Naranja 16oz' },
-      ],
-    },
-    // Past tickets for week and month
-    {
-      id: 'k-037',
-      turno: '#037',
-      clienteNombre: 'Sebastián Gómez',
-      documento: '1.018.990.112',
-      ficha: '2671234',
-      programa: 'Mantenimiento Electrónico',
-      tipo: 'Almuerzo',
-      tiempoMin: 15,
-      fecha: 'Esta Semana',
-      estado: 'entregado',
-      items: [
-        { cantidad: 1, nombre: 'Almuerzo Ejecutivo SENA' },
-      ],
-    },
-    {
-      id: 'k-025',
-      turno: '#025',
-      clienteNombre: 'Prof. Mario Fonseca',
-      documento: '19.832.411',
-      ficha: 'CGAO Vélez',
-      programa: 'Coordinación Académica',
-      tipo: 'Bebidas',
-      tiempoMin: 22,
-      fecha: 'Este Mes',
-      estado: 'entregado',
-      items: [
-        { cantidad: 3, nombre: 'Café Americano CGAO' },
-        { cantidad: 2, nombre: 'Pastel de Pollo Hojaldrado' },
-      ],
-    },
-  ]);
+  const [tickets, setTickets] = useState<DespachoTicket[]>([]);
 
-  // Advance state
+  // Cargar las comandas reales (venta + detalle + cliente) y mantenerlas al día
+  useEffect(() => {
+    let active = true;
+    const load = () =>
+      fetchTicketsDespachoFromSupabase().then((remoteTickets) => {
+        if (active && remoteTickets) setTickets(remoteTickets);
+      });
+    load();
+    const poll = setInterval(load, 20000);
+    return () => {
+      active = false;
+      clearInterval(poll);
+    };
+  }, []);
+
+  // Advance state (persiste el avance en Supabase)
   const handleAdvanceTicket = (id: string) => {
     if (isReadOnly) return;
 
     setTickets((prev) =>
       prev.map((t) => {
-        if (t.id === id) {
-          if (t.estado === 'entrante') {
-            return { ...t, estado: 'preparacion' };
-          }
-          if (t.estado === 'preparacion') {
-            soundEngine.playCafeteriaBell();
-            return { ...t, estado: 'listo' };
-          }
-          if (t.estado === 'listo') {
-            soundEngine.playCashRegisterBeep();
-            return { ...t, estado: 'entregado' };
-          }
+        if (t.id !== id) return t;
+
+        const next =
+          t.estado === 'entrante' ? 'preparacion' : t.estado === 'preparacion' ? 'listo' : t.estado === 'listo' ? 'entregado' : 'entregado';
+
+        if (next !== t.estado) {
+          if (t.idventaDb) updateVentaEstadoToSupabase(t.idventaDb, estadoDbParaAvance(next));
+          if (next === 'listo') soundEngine.playCafeteriaBell();
+          if (next === 'entregado') soundEngine.playCashRegisterBeep();
         }
-        return t;
+
+        return { ...t, estado: next as DespachoTicket['estado'] };
       })
     );
   };
@@ -182,12 +99,16 @@ export const DespachoScreen: React.FC<DespachoScreenProps> = ({ userRole = 'Desp
     if (isReadOnly) return;
     setTickets((prev) =>
       prev.map((t) => {
-        if (t.id === id) {
-          if (t.estado === 'listo') return { ...t, estado: 'preparacion' };
-          if (t.estado === 'preparacion') return { ...t, estado: 'entrante' };
-          if (t.estado === 'entregado') return { ...t, estado: 'listo' };
+        if (t.id !== id) return t;
+
+        const previous: DespachoTicket['estado'] =
+          t.estado === 'listo' ? 'preparacion' : t.estado === 'preparacion' ? 'entrante' : t.estado === 'entregado' ? 'listo' : 'entrante';
+
+        if (previous !== t.estado) {
+          if (t.idventaDb) updateVentaEstadoToSupabase(t.idventaDb, estadoDbParaRevertir(previous));
         }
-        return t;
+
+        return { ...t, estado: previous as DespachoTicket['estado'] };
       })
     );
   };

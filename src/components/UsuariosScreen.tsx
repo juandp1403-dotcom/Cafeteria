@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { AppUser, UserRole } from '../types';
+import { saveUsuarioToSupabase } from '../lib/supabase';
 import { 
   Search, 
   UserPlus, 
@@ -148,14 +149,28 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
       showToast(`Usuario registrado: ${userToSave.nombre}`);
     }
 
+    // Persistir en Supabase (cliente -> tabla cliente, personal -> tabla personal,
+    // Admin requiere contraseña en BD)
+    saveUsuarioToSupabase(userToSave).then((res) => {
+      if (res && !res.ok && res.reason) {
+        showToast(`Aviso Supabase: ${res.reason}`);
+      }
+    });
+
     setIsModalOpen(false);
   };
 
   const handleToggleActive = (user: AppUser) => {
     if (isReadOnly) return;
-    onUpdateUser({
+    const updatedUser = {
       ...user,
       activo: !user.activo,
+    };
+    onUpdateUser(updatedUser);
+    saveUsuarioToSupabase(updatedUser).then((res) => {
+      if (res && !res.ok && res.reason) {
+        showToast(`Aviso Supabase: ${res.reason}`);
+      }
     });
     showToast(`Estado de usuario actualizado: ${user.nombre} (${!user.activo ? 'Activo' : 'Inactivo'})`);
   };
@@ -163,6 +178,11 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
   const handleDelete = (id: string, nombre: string) => {
     if (isReadOnly) return;
     if (window.confirm(`¿Confirmas la eliminación del usuario ${nombre}?`)) {
+      const existing = users.find((u) => u.id === id);
+      if (existing) {
+        // Best-effort: desactivar en BD en lugar de borrar (FKs del esquema)
+        saveUsuarioToSupabase({ ...existing, activo: false });
+      }
       onDeleteUser(id);
       showToast(`Usuario eliminado del sistema: ${nombre}`);
     }

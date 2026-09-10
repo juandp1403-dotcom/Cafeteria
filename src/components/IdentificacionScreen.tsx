@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserAprendiz } from '../types';
+import { fetchClienteFromSupabase, ensureClienteToSupabase } from '../lib/supabase';
 import { CGAOLogo } from './CGAOLogo';
 import { 
   CreditCard, 
@@ -27,28 +28,42 @@ export const IdentificacionScreen: React.FC<IdentificacionScreenProps> = ({
 }) => {
   const [formData, setFormData] = useState({
     tipoDoc: user.tipoDoc || 'C.C. Cédula',
-    documento: user.documento || '1020304050',
-    nombre: user.nombre || 'Juan Carlos Pérez Gómez',
-    ficha: user.ficha || '2671234',
+    documento: user.documento || '',
+    nombre: user.nombre || '',
+    ficha: user.ficha || '',
     programa: user.programa || 'ADSO / Análisis y Desarrollo de Software',
   });
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.documento.trim() || !formData.nombre.trim()) {
       setValidationError('Por favor completa el número de documento y tu nombre completo.');
       return;
     }
 
+    // Sincronizar con la tabla `cliente` de Supabase (buscar + garantizar existencia)
+    let finalNombre = formData.nombre;
+    let finalFicha = formData.ficha;
+    try {
+      const remoteCliente = await fetchClienteFromSupabase(formData.documento);
+      if (remoteCliente) {
+        finalNombre = remoteCliente.nombre || finalNombre;
+        finalFicha = remoteCliente.ficha ? String(remoteCliente.ficha) : finalFicha;
+      }
+      await ensureClienteToSupabase(formData.documento, finalNombre, finalFicha);
+    } catch {
+      // Sin conexión: se continúa con los datos escritos por el aprendiz.
+    }
+
     onUpdateUser({
       ...user,
       tipoDoc: formData.tipoDoc,
       documento: formData.documento,
-      nombre: formData.nombre,
-      ficha: formData.ficha,
+      nombre: finalNombre,
+      ficha: finalFicha,
       programa: formData.programa,
       verificado: true,
     });

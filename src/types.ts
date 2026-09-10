@@ -112,6 +112,8 @@ export interface Order {
 
 export interface POSOrder {
   id: string;
+  idventaDb?: number;
+  estadoDb?: string;
   numeroTurno: string;
   clienteNombre: string;
   documento: string;

@@ -96,12 +96,25 @@ export interface ExportInventoryItem {
   alertaStock: number;
   calorias: number;
   tag: string;
+  agotado?: boolean;
 }
+
+// Etiquetas de categoría legibles al exportar (formato compatible con la app Flask SENA)
+const CATEGORY_LABELS: Record<string, string> = {
+  comida_rapida: 'Comida Rápida',
+  bebidas_frias: 'Bebidas',
+  cafe_calientes: 'Café & Calientes',
+  combos_sena: 'Combos',
+  reposteria: 'Postres',
+  otros: 'Paquetes',
+};
 
 /**
  * Exports a multi-sheet Excel (.xlsx) file containing:
- * - Sheet 1: "Inventario Activo" (full catalogue, prices, costs, margins, current stock, alerts)
- * - Sheet 2: "Bajas y Mermas" (all waste and loss registrations, reasons, financial impact, responsible staff)
+ * - Sheet 1: "Inventario Activo" (format compatible with the reference Flask app:
+ *   headers Nombre, Precio ($), Costo ($), Stock, Stock Mínimo, Categoría, Subcategoría,
+ *   Descripción, Activo + ID, so the file can be re-imported by either system)
+ * - Sheet 2: "Bajas y Mermas" (Fecha, Producto, Cantidad, Costo Unitario, Total, Motivo, Responsable)
  */
 export function exportInventoryReport(items: ExportInventoryItem[], bajas: BajaItem[] = []) {
   const timestamp = new Date().toISOString().slice(0, 10);
@@ -111,99 +124,96 @@ export function exportInventoryReport(items: ExportInventoryItem[], bajas: BajaI
     const wb = XLSX.utils.book_new();
 
     // Sheet 1: Inventario Activo
+    const inventoryHeaders = [
+      'ID',
+      'Nombre',
+      'Precio ($)',
+      'Costo ($)',
+      'Stock',
+      'Stock Mínimo',
+      'Categoría',
+      'Subcategoría',
+      'Descripción',
+      'Activo',
+    ];
+
+    const totalValorPrecio = items.reduce((acc, it) => acc + it.precio * it.stock, 0);
+    const totalValorCosto = items.reduce((acc, it) => acc + it.costo * it.stock, 0);
+
     const inventoryData = [
       ['INVENTARIO GENERAL - CAFETERÍA CENTRO CGAO VÉLEZ - REGIONAL SANTANDER 2026'],
       [`Fecha de corte: ${new Date().toLocaleString('es-CO')}`],
       [],
-      [
-        'Código ID',
-        'Nombre del Producto',
-        'Descripción',
-        'Categoría',
-        'Subcategoría',
-        'Costo Unitario (COP)',
-        'Precio de Venta (COP)',
-        'Margen Ganancia (%)',
-        'Stock Actual',
-        'Alerta Mínima Stock',
-        'Estado de Existencias',
-        'Calorías (kcal)',
-        'Etiqueta',
-      ],
-      ...items.map((item) => {
-        const margin = item.precio > 0 ? (((item.precio - item.costo) / item.precio) * 100).toFixed(1) + '%' : '0%';
-        const status = item.stock === 0 ? 'AGOTADO' : item.stock <= item.alertaStock ? 'ALERTA AMARILLA' : 'ÓPTIMO';
-
-        return [
-          item.id,
-          item.nombre,
-          item.descripcion,
-          item.categoria,
-          item.subcategoria || 'General',
-          item.costo,
-          item.precio,
-          margin,
-          item.stock,
-          item.alertaStock,
-          status,
-          item.calorias,
-          item.tag,
-        ];
-      }),
+      inventoryHeaders,
+      ...items.map((item) => [
+        item.id,
+        item.nombre,
+        item.precio,
+        item.costo,
+        item.stock,
+        item.alertaStock,
+        CATEGORY_LABELS[item.categoria] || item.categoria,
+        item.subcategoria || 'General',
+        item.descripcion || '',
+        item.stock > 0 && !item.agotado ? 'Sí' : 'No',
+      ]),
+      [],
+      ['TOTAL', '', totalValorPrecio, totalValorCosto, '', '', '', '', '', ''],
     ];
 
     const wsInventory = XLSX.utils.aoa_to_sheet(inventoryData);
 
     // Auto-fit columns
     wsInventory['!cols'] = [
-      { wch: 14 }, // ID
-      { wch: 28 }, // Nombre
-      { wch: 35 }, // Descripción
+      { wch: 12 }, // ID
+      { wch: 30 }, // Nombre
+      { wch: 14 }, // Precio
+      { wch: 14 }, // Costo
+      { wch: 10 }, // Stock
+      { wch: 14 }, // Stock Mínimo
       { wch: 18 }, // Categoría
       { wch: 20 }, // Subcategoría
-      { wch: 16 }, // Costo
-      { wch: 16 }, // Precio
-      { wch: 14 }, // Margen
-      { wch: 12 }, // Stock
-      { wch: 16 }, // Alerta
-      { wch: 16 }, // Estado
-      { wch: 12 }, // Calorías
-      { wch: 18 }, // Tag
+      { wch: 40 }, // Descripción
+      { wch: 10 }, // Activo
     ];
 
     XLSX.utils.book_append_sheet(wb, wsInventory, 'Inventario Activo');
 
     // Sheet 2: Bajas y Mermas
+    const bajasHeaders = [
+      'ID Baja',
+      'Fecha',
+      'Hora',
+      'Producto',
+      'Cantidad',
+      'Costo Unitario',
+      'Total',
+      'Motivo',
+      'Categoría',
+      'Responsable',
+    ];
+
+    const totalUnidadesBaja = bajas.reduce((acc, b) => acc + b.cantidad, 0);
+
     const bajasData = [
       ['REGISTRO DE BAJAS Y MERMAS DE INSUMOS - CGAO VÉLEZ 2026'],
       [`Fecha de generación: ${new Date().toLocaleString('es-CO')}`],
       [],
-      [
-        'ID Baja',
-        'Fecha',
-        'Hora',
-        'Semana',
-        'Producto Afectado',
-        'Cantidad Descargada (u)',
-        'Costo Unitario (COP)',
-        'Pérdida Económica (COP)',
-        'Motivo de la Baja',
-        'Responsable (Personal)',
-        'Observaciones Técnicas',
-      ],
+      bajasHeaders,
       ...bajas.map((b) => [
         b.id,
         b.fecha,
         b.hora,
-        b.semana,
         b.productoNombre,
         b.cantidad,
         b.costoUnitario,
         b.costoTotal,
         b.motivo,
+        b.categoria,
         b.responsable,
-        b.observaciones || 'Sin observaciones adicionales.',
       ]),
+      [],
+      ['TOTAL UNIDADES DE BAJA', '', '', '', totalUnidadesBaja, '', '', '', '', ''],
     ];
 
     const wsBajas = XLSX.utils.aoa_to_sheet(bajasData);
@@ -211,14 +221,13 @@ export function exportInventoryReport(items: ExportInventoryItem[], bajas: BajaI
       { wch: 12 }, // ID
       { wch: 12 }, // Fecha
       { wch: 10 }, // Hora
-      { wch: 24 }, // Semana
-      { wch: 26 }, // Producto
-      { wch: 16 }, // Cantidad
+      { wch: 28 }, // Producto
+      { wch: 12 }, // Cantidad
       { wch: 16 }, // Costo Unitario
-      { wch: 18 }, // Pérdida Total
-      { wch: 35 }, // Motivo
-      { wch: 24 }, // Responsable
-      { wch: 45 }, // Observaciones
+      { wch: 16 }, // Total
+      { wch: 40 }, // Motivo
+      { wch: 16 }, // Categoría
+      { wch: 28 }, // Responsable
     ];
 
     XLSX.utils.book_append_sheet(wb, wsBajas, 'Bajas y Mermas');

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { exportInventoryReport } from '../utils/exportExcel';
 import { assets } from '../assets/images';
+import * as XLSX from 'xlsx';
 
 interface InventarioScreenProps {
   products: ProductItem[];
@@ -38,6 +39,129 @@ interface InventarioScreenProps {
   bajas: BajaItem[];
   onAddBaja: (baja: BajaItem) => void;
   onImportProducts?: (imported: ProductItem[]) => void;
+}
+
+// --- Utilidades de importación Excel/CSV (formato compatible con la app Flask SENA) ---
+
+function normalizarEncabezado(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\$\(\)/g, '')
+    .replace(/[()]/g, '')
+    .replace(/[\s-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+const ALIASES_IMPORTACION: Record<string, string> = {
+  producto: 'nombre',
+  nombre: 'nombre',
+  nombre_producto: 'nombre',
+  nombre_del_producto: 'nombre',
+  precio: 'precio',
+  precio_venta: 'precio',
+  precio_$: 'precio',
+  costo: 'costo',
+  costo_unitario: 'costo',
+  stock: 'stock',
+  stock_actual: 'stock',
+  stock_minimo: 'stock_minimo',
+  stock_min: 'stock_minimo',
+  categoria: 'categoria',
+  subcategoria: 'subcategoria',
+  descripcion: 'descripcion',
+  activo: 'activo',
+};
+
+const CATEGORIA_LABEL_A_KEY: Record<string, ProductItem['categoria']> = {
+  bebidas: 'bebidas_frias',
+  bebidas_frias: 'bebidas_frias',
+  bebidas_frías: 'bebidas_frias',
+  comida_rapida: 'comida_rapida',
+  cafe: 'cafe_calientes',
+  cafe_calientes: 'cafe_calientes',
+  cafe_y_calientes: 'cafe_calientes',
+  'cafe_&_calientes': 'cafe_calientes',
+  calientes: 'cafe_calientes',
+  combos: 'combos_sena',
+  combos_sena: 'combos_sena',
+  postres: 'reposteria',
+  reposteria: 'reposteria',
+  paquetes: 'otros',
+  galletas: 'otros',
+  dulces: 'otros',
+};
+
+const CATEGORIA_KEYS_VALIDAS: string[] = ['comida_rapida', 'bebidas_frias', 'cafe_calientes', 'combos_sena', 'reposteria', 'otros'];
+
+const CATEGORIA_DEFAULT_LABELS: Record<string, string> = {
+  comida_rapida: 'Comida Rápida',
+  bebidas_frias: 'Bebidas Frías',
+  cafe_calientes: 'Café & Calientes',
+  combos_sena: 'Combos SENA',
+  reposteria: 'Repostería',
+  otros: 'Otros Insumos',
+};
+
+function mapearCategoria(val: unknown): { key: ProductItem['categoria']; label: string } {
+  const raw = String((val ?? '').toString().trim());
+  const normalized = normalizarEncabezado(raw);
+  const key = CATEGORIA_LABEL_A_KEY[normalized] || (CATEGORIA_KEYS_VALIDAS.includes(raw) ? (raw as ProductItem['categoria']) : 'comida_rapida');
+  return { key, label: CATEGORIA_DEFAULT_LABELS[key] || 'Comida Rápida' };
+}
+
+function numeroEntero(val: unknown, fallback: number): number {
+  if (val === null || val === undefined || val === '') return fallback;
+  const n = parseInt(String(val).replace(/[^0-9-]/g, ''), 10);
+  return isNaN(n) ? fallback : n;
+}
+
+function parsearFilasProductos(rows: (string | number)[][]): Partial<ProductItem>[] {
+  if (!rows.length) return [];
+
+  const encabezados = rows[0].map((h) => normalizarEncabezado(String(h)));
+  const col: Record<string, number> = {};
+  encabezados.forEach((h, i) => {
+    const canon = ALIASES_IMPORTACION[h];
+    if (canon && col[canon] === undefined) col[canon] = i;
+    if ((h === 'descripcion' || h === 'descripcion_corta') && col['descripcion'] === undefined) col['descripcion'] = i;
+  });
+
+  if (col['nombre'] === undefined) return [];
+
+  const items: Partial<ProductItem>[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const nombre = String(row[col['nombre']] ?? '').trim();
+    if (!nombre) continue;
+    const nombreNormalizado = normalizarEncabezado(nombre);
+    if (nombreNormalizado === 'total' || nombreNormalizado === 'total_unidades_de_baja') continue;
+
+    const cat = mapearCategoria(col['categoria'] !== undefined ? row[col['categoria']] : '');
+    const activoIndex = col['activo'];
+    const activoRaw = activoIndex !== undefined ? String(row[activoIndex] ?? '').toLowerCase() : 'sí';
+
+    items.push({
+      id: `prod-imp-${Date.now()}-${i}`,
+      nombre,
+      descripcion:
+        col['descripcion'] !== undefined ? String(row[col['descripcion']] ?? '') || 'Producto cargado desde archivo Excel institucional.' : 'Producto cargado desde archivo Excel institucional.',
+      categoria: cat.key,
+      categoriaLabel: cat.label,
+      subcategoria: col['subcategoria'] !== undefined ? String(row[col['subcategoria']] ?? '') || 'Insumo' : 'Insumo',
+      precio: col['precio'] !== undefined ? numeroEntero(row[col['precio']], 3500) : 3500,
+      costo: col['costo'] !== undefined ? numeroEntero(row[col['costo']], 1800) : 1800,
+      stock: col['stock'] !== undefined ? numeroEntero(row[col['stock']], 20) : 20,
+      alertaStock: col['stock_minimo'] !== undefined ? numeroEntero(row[col['stock_minimo']], 8) : 8,
+      calorias: 0,
+      tag: 'IMPORTADO CGAO',
+      imagen: assets.empanadas,
+      agotado: activoRaw === 'no',
+    });
+  }
+  return items;
 }
 
 export const InventarioScreen: React.FC<InventarioScreenProps> = ({
@@ -327,11 +451,11 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
 
   // Download Sample Excel Template
   const handleDownloadTemplate = () => {
-    const headers = ['Nombre', 'Categoria', 'Subcategoria', 'Precio', 'Costo', 'Stock', 'AlertaStock', 'Calorias', 'Tag', 'Descripcion'];
+    const headers = ['Nombre', 'Precio ($)', 'Costo ($)', 'Stock', 'Stock Mínimo', 'Categoría', 'Subcategoría', 'Descripción', 'Activo'];
     const sampleRows = [
-      ['Empanada de Pollo CGAO', 'comida_rapida', 'Fritos', '3800', '1900', '30', '10', '260', 'CRUJIENTE', 'Empanada rellena de pollo desmechado con finas hierbas'],
-      ['Jugo de Mora 16oz', 'bebidas_frias', 'Jugos Naturales', '4200', '1800', '20', '8', '140', '100% PULPA', 'Mora fresca de Santander licuada al instante'],
-      ['Capuchino Veleño', 'cafe_calientes', 'Cafetería Especial', '3500', '1200', '25', '6', '110', 'BARISTA CGAO', 'Espresso doble con leche texturizada y ralladura de bocadillo'],
+      ['Empanada de Pollo CGAO', '3800', '1900', '30', '10', 'Comida Rápida', 'Fritos', 'Empanada rellena de pollo desmechado con finas hierbas', 'Sí'],
+      ['Jugo de Mora 16oz', '4200', '1800', '20', '8', 'Bebidas', 'Jugos Naturales', 'Mora fresca de Santander licuada al instante', 'Sí'],
+      ['Capuchino Veleño', '3500', '1200', '25', '6', 'Café & Calientes', 'Cafetería Especial', 'Espresso doble con leche texturizada y ralladura de bocadillo', 'Sí'],
     ];
 
     const csvContent = '\uFEFF' + [headers.join(','), ...sampleRows.map((r) => r.map((c) => `"${c}"`).join(','))].join('\r\n');
@@ -347,7 +471,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     showToast('Plantilla CSV descargada exitosamente.');
   };
 
-  // Handle Excel / CSV file selection and parsing
+  // Handle Excel / CSV file selection and parsing (header-based, Flask-compatible columns)
   const handleExcelFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -355,56 +479,53 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     setImportFileName(file.name);
     setImportError(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    const onRows = (rows: (string | number)[][]) => {
       try {
-        const text = event.target?.result as string;
-        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-        
-        if (lines.length <= 1) {
+        if (rows.length <= 1) {
           setImportError('El archivo no contiene filas de datos para importar.');
           return;
         }
-
-        // Parse CSV rows (handles quotes and commas or semicolons)
-        const delimiter = lines[0].includes(';') ? ';' : ',';
-        const parsedItems: Partial<ProductItem>[] = [];
-
-        for (let i = 1; i < lines.length; i++) {
-          const row = lines[i];
-          const cols = row.split(delimiter).map((c) => c.replace(/^["']|["']$/g, '').trim());
-
-          if (cols[0]) {
-            parsedItems.push({
-              id: `prod-imp-${Date.now()}-${i}`,
-              nombre: cols[0] || `Producto Importado ${i}`,
-              categoria: (cols[1] as any) || 'comida_rapida',
-              categoriaLabel: cols[1] === 'bebidas_frias' ? 'Bebidas Frías' : cols[1] === 'cafe_calientes' ? 'Café & Calientes' : 'Comida Rápida',
-              subcategoria: cols[2] || 'Insumo',
-              precio: Number(cols[3]) || 3500,
-              costo: Number(cols[4]) || 1800,
-              stock: Number(cols[5]) || 20,
-              alertaStock: Number(cols[6]) || 8,
-              calorias: Number(cols[7]) || 200,
-              tag: cols[8] || 'IMPORTADO',
-              descripcion: cols[9] || 'Producto cargado desde archivo Excel institucional.',
-              imagen: assets.empanadas,
-              agotado: false,
-            });
-          }
-        }
-
+        const parsedItems = parsearFilasProductos(rows);
         if (parsedItems.length === 0) {
-          setImportError('No se pudieron reconocer columnas válidas en el archivo.');
+          setImportError('No se pudieron reconocer columnas válidas en el archivo. Verifica que tenga un encabezado "Nombre"/"Producto".');
         } else {
           setImportPreview(parsedItems);
         }
-      } catch (err) {
+      } catch {
         setImportError('Error al leer el archivo. Asegúrate de usar el formato de la plantilla CSV/Excel.');
       }
     };
 
-    reader.readAsText(file);
+    if (/\.(xlsx|xls)$/i.test(file.name)) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target?.result as ArrayBuffer);
+          const wb = XLSX.read(data, { type: 'array' });
+          const firstSheetName = wb.SheetNames[0];
+          const sheet = wb.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1, defval: '' });
+          onRows(rows);
+        } catch {
+          setImportError('No se pudo descifrar el archivo Excel. Verifica que sea un .xlsx/.xls válido.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result as string;
+          const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+          const delimiter = lines[0]?.includes(';') ? ';' : ',';
+          const rows = lines.map((line) => line.split(delimiter).map((c) => c.replace(/^["']|["']$/g, '').trim()));
+          onRows(rows);
+        } catch {
+          setImportError('Error al leer el archivo CSV.');
+        }
+      };
+      reader.readAsText(file);
+    }
   };
 
   // Confirm Excel Import

@@ -11,13 +11,16 @@ import {
   BajaItem,
   AuditLog
 } from './types';
-import { INITIAL_PRODUCTS } from './data/catalog';
-import { INITIAL_USERS } from './data/users';
-import { INITIAL_BAJAS } from './data/bajas';
-import { INITIAL_AUDIT_LOGS } from './data/auditLogs';
 import { 
   fetchProductsFromSupabase, 
-  fetchBajasFromSupabase
+  fetchBajasFromSupabase,
+  fetchUsersFromSupabase,
+  fetchAuditLogsFromSupabase,
+  saveProductToSupabase,
+  deleteProductFromSupabase,
+  saveBajaToSupabase,
+  recordAuditToSupabase,
+  recordVentaToSupabase
 } from './lib/supabase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -42,16 +45,16 @@ export default function App() {
   const [staffEmail, setStaffEmail] = useState<string>('admin@sena.edu.co');
 
   // Master product catalog state (shared between Catalogo, Caja POS, Inventario, and Métricas)
-  const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<ProductItem[]>([]);
 
   // Master user accounts state (managed in UsuariosScreen)
-  const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<AppUser[]>([]);
 
   // Bajas & Mermas State (Managed in InventarioScreen, updated weekly)
-  const [bajas, setBajas] = useState<BajaItem[]>(INITIAL_BAJAS);
+  const [bajas, setBajas] = useState<BajaItem[]>([]);
 
   // Audit Logs State (Staff actions only, strictly excludes client orders)
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   // Synchronize with remote catalog and records on mount
   useEffect(() => {
@@ -68,82 +71,62 @@ export default function App() {
         setBajas(remoteBajas);
       }
     });
+
+    // 3. Fetch real staff users (admin + personal tables)
+    fetchUsersFromSupabase().then((remoteUsers) => {
+      if (remoteUsers) {
+        setUsers(remoteUsers);
+      }
+    });
+
+    // 4. Fetch audit trail
+    fetchAuditLogsFromSupabase().then((remoteLogs) => {
+      if (remoteLogs) {
+        setAuditLogs(remoteLogs);
+      }
+    });
+
+    // Poll: keep catalog (and stock) in sync with Supabase
+    const pollProducts = setInterval(() => {
+      fetchProductsFromSupabase().then((remoteProds) => {
+        if (remoteProds) setProducts(remoteProds);
+      });
+    }, 30000);
+
+    const pollUsers = setInterval(() => {
+      fetchUsersFromSupabase().then((remoteUsers) => {
+        if (remoteUsers) setUsers(remoteUsers);
+      });
+      fetchAuditLogsFromSupabase().then((remoteLogs) => {
+        if (remoteLogs) setAuditLogs(remoteLogs);
+      });
+    }, 60000);
+
+    return () => {
+      clearInterval(pollProducts);
+      clearInterval(pollUsers);
+    };
   }, []);
 
-  // Apprentice User Profile for Kiosko
+  // Apprentice User Profile for Kiosko (empty -> filled in IdentificacionScreen / Supabase)
   const [user, setUser] = useState<UserAprendiz>({
-    documento: '1020304050',
+    documento: '',
     tipoDoc: 'C.C. Cédula',
-    nombre: 'Juan Carlos Pérez Gómez',
-    ficha: '2671234',
-    programa: 'ADSO / Análisis y Desarrollo de Software',
-    jornada: 'Jornada Diurna 06:00 - 13:00',
-    turnoAlmuerzo: 'Turno de Almuerzo Bloque B - 12:15',
-    saldoMonedero: 35000,
-    subsidioActivo: true,
-    verificado: true,
+    nombre: '',
+    ficha: '',
+    programa: '',
+    jornada: '',
+    turnoAlmuerzo: '',
+    saldoMonedero: 0,
+    subsidioActivo: false,
+    verificado: false,
   });
 
   // Cart state
-  const [cart, setCart] = useState<CartItem[]>([
-    {
-      product: INITIAL_PRODUCTS[0], // Empanada de Carne ($3.500)
-      cantidad: 1,
-    },
-    {
-      product: INITIAL_PRODUCTS[2], // Jugo de Naranja 16oz ($4.000)
-      cantidad: 1,
-    },
-  ]);
+  const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Active Order matching Turno #042
-  const [activeOrder, setActiveOrder] = useState<Order>({
-    id: 'ord-042',
-    numeroTurno: '#042',
-    fecha: '18 Oct, 2026',
-    hora: '12:42 PM',
-    timestamp: Date.now(),
-    cliente: {
-      nombre: 'Juan Carlos Pérez Gómez',
-      documento: '1.020.304.050',
-      ficha: '2671234',
-      programa: 'ADSO CGAO',
-    },
-    items: [
-      {
-        nombre: 'Almuerzo Ejecutivo SENA',
-        descripcion: 'Pechuga grille + Arroz finas hierbas + Ensalada fresca',
-        cantidad: 1,
-        precioUnitario: 11500,
-        total: 11500,
-      },
-      {
-        nombre: 'Jugo de Naranja 16oz',
-        descripcion: 'Bajo en azúcar • 14oz',
-        cantidad: 1,
-        precioUnitario: 4000,
-        total: 4000,
-      },
-      {
-        nombre: 'Porción Torta de Zanahoria',
-        descripcion: 'Repostería CGAO',
-        cantidad: 1,
-        precioUnitario: 3200,
-        total: 3200,
-      },
-    ],
-    metodoPago: 'Billetera Digital SENA',
-    subtotal: 18700,
-    descuento: 2805,
-    total: 15895,
-    estado: 'en_preparacion',
-    faseActual: 2,
-    tiempoEstimadoMin: 4,
-    idVenta: '#VTA-984210',
-    mesaKiosko: 'Kiosko A-01',
-    codigoQR: 'CGAO-VELEZ-984210',
-    codigoBarras: '9842-1042-SENA',
-  });
+  // Active Order (created in handleConfirmOrder)
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
@@ -220,17 +203,30 @@ export default function App() {
     setActiveOrder(newOrder);
     soundEngine.playCafeteriaBell();
     setCurrentScreen('mi_turno');
+
+    // Persist the sale in Supabase (venta + detalleventa) and sync the VTA number
+    recordVentaToSupabase(newOrder).then((idventa) => {
+      if (idventa) {
+        setActiveOrder((prev) =>
+          prev && prev.id === newOrder.id ? { ...prev, idVenta: `#VTA-${idventa}` } : prev
+        );
+      }
+    });
   };
 
   const handleAdvanceState = (newStatus: OrderStatus) => {
-    setActiveOrder((prev) => ({
-      ...prev,
-      estado: newStatus,
-      faseActual:
-        newStatus === 'pago_confirmado' ? 1 :
-        newStatus === 'en_preparacion' ? 2 :
-        newStatus === 'listo_recoger' ? 3 : 4,
-    }));
+    setActiveOrder((prev) =>
+      prev
+        ? {
+            ...prev,
+            estado: newStatus,
+            faseActual:
+              newStatus === 'pago_confirmado' ? 1 :
+              newStatus === 'en_preparacion' ? 2 :
+              newStatus === 'listo_recoger' ? 3 : 4,
+          }
+        : prev
+    );
   };
 
   // Login handler from AccesoPersonalScreen
@@ -281,11 +277,15 @@ export default function App() {
       ip: '192.168.10.15 (Terminal Personal)',
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+
+    // Persistir el registro de auditoría en Supabase
+    recordAuditToSupabase(newLog);
   };
 
   // Product CRUD
   const handleAddProduct = (newProd: ProductItem) => {
     setProducts((prev) => [newProd, ...prev]);
+    saveProductToSupabase(newProd);
 
     addStaffAuditLog(
       'Inventario',
@@ -298,6 +298,7 @@ export default function App() {
   const handleUpdateProduct = (updated: ProductItem) => {
     const existing = products.find((p) => p.id === updated.id);
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    saveProductToSupabase(updated);
 
     let modulo: 'Inventario' | 'Precios' = 'Inventario';
     let tipo: 'edicion' | 'ajuste' = 'edicion';
@@ -317,6 +318,7 @@ export default function App() {
   const handleDeleteProduct = (productId: string) => {
     const existing = products.find((p) => p.id === productId);
     setProducts((prev) => prev.filter((p) => p.id !== productId));
+    deleteProductFromSupabase(productId);
 
     addStaffAuditLog(
       'Inventario',
@@ -329,6 +331,7 @@ export default function App() {
   // Batch import products via Excel
   const handleImportProducts = (imported: ProductItem[]) => {
     setProducts((prev) => [...imported, ...prev]);
+    imported.forEach((item) => saveProductToSupabase(item));
 
     addStaffAuditLog(
       'Inventario',
@@ -341,6 +344,7 @@ export default function App() {
   // Bajas / Mermas Handler
   const handleAddBaja = (newBaja: BajaItem) => {
     setBajas((prev) => [newBaja, ...prev]);
+    saveBajaToSupabase(newBaja);
 
     addStaffAuditLog(
       'Bajas',
@@ -425,7 +429,7 @@ export default function App() {
         user={user}
         staffName={staffName}
         staffEmail={staffEmail}
-        activeOrderCount={1}
+        activeOrderCount={activeOrder ? 1 : 0}
       />
 
       {/* Main Screen Content */}
@@ -471,7 +475,6 @@ export default function App() {
 
             {currentScreen === 'acceso_personal' && (
               <AccesoPersonalScreen
-                users={users}
                 onLoginSuccess={handleLoginSuccess}
                 onBackToAprendiz={() => {
                   setRole('Cliente');
@@ -492,14 +495,34 @@ export default function App() {
               />
             )}
 
-            {currentScreen === 'mi_turno' && (
-              <MiTurnoScreen
-                order={activeOrder}
-                onNewOrder={() => setCurrentScreen('catalogo')}
-                onOpenReceipt={() => setShowReceiptModal(true)}
-                onAdvanceState={handleAdvanceState}
-              />
-            )}
+            {currentScreen === 'mi_turno' &&
+              (activeOrder ? (
+                <MiTurnoScreen
+                  order={activeOrder}
+                  onNewOrder={() => setCurrentScreen('catalogo')}
+                  onOpenReceipt={() => setShowReceiptModal(true)}
+                  onAdvanceState={handleAdvanceState}
+                />
+              ) : (
+                <div className="max-w-md mx-auto my-16 p-6 glass-panel-elevated rounded-2xl border border-white/10 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-600/20 text-indigo-300 flex items-center justify-center mx-auto">
+                    <ArrowRight className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white font-display">
+                    No hay un pedido activo
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Selecciona productos del catálogo y confirma el pedido para
+                    ver su seguimiento en tiempo real.
+                  </p>
+                  <button
+                    onClick={() => setCurrentScreen('catalogo')}
+                    className="py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer shadow-md"
+                  >
+                    Ir al Catálogo
+                  </button>
+                </div>
+              ))}
 
             {currentScreen === 'caja_pos' && (
               <CajaPOSScreen
@@ -556,7 +579,7 @@ export default function App() {
       <Footer />
 
       {/* Printable Receipt Modal */}
-      {showReceiptModal && (
+      {showReceiptModal && activeOrder && (
         <ReceiptModal
           order={activeOrder}
           onClose={() => setShowReceiptModal(false)}

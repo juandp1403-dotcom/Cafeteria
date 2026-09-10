@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserRole, AppUser } from '../types';
+import { UserRole } from '../types';
 import { CGAOLogo } from './CGAOLogo';
 import { 
   ShieldCheck, 
@@ -10,84 +10,64 @@ import {
   ArrowLeft, 
   CheckCircle2, 
   AlertTriangle,
-  Users,
-  Shield,
-  Info
+  Shield
 } from 'lucide-react';
 
 interface AccesoPersonalScreenProps {
-  users: AppUser[];
   onLoginSuccess: (role: UserRole, userEmail: string, userName: string) => void;
   onBackToAprendiz: () => void;
 }
 
 export const AccesoPersonalScreen: React.FC<AccesoPersonalScreenProps> = ({
-  users,
   onLoginSuccess,
   onBackToAprendiz,
 }) => {
-  const [identifier, setIdentifier] = useState('admin@sena.edu.co');
-  const [password, setPassword] = useState('••••••••');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Filter authorized staff from the database to assist with quick login
-  const staffAccounts = users.filter((u) => u.rol !== 'Cliente');
-
-  const handleQuickFill = (acc: AppUser) => {
-    setIdentifier(acc.email);
-    setPassword('••••••••');
-    setError(null);
-  };
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const term = identifier.trim().toLowerCase();
+    const term = identifier.trim();
     if (!term) {
       setError('Por favor ingresa tu correo institucional o número de documento.');
+      return;
+    }
+    if (!password) {
+      setError('Por favor ingresa tu contraseña.');
       return;
     }
 
     setLoading(true);
 
-    // Look up credentials directly in the database (users state)
-    setTimeout(() => {
-      const matchedUser = users.find(
-        (u) =>
-          u.email.toLowerCase() === term ||
-          u.documento.trim() === identifier.trim()
-      );
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: term, password }),
+      });
 
-      if (!matchedUser) {
+      const json = await resp.json().catch(() => null);
+
+      if (!resp.ok || !json?.success) {
         setError(
-          'Usuario o documento no encontrado en el directorio del SENA CGAO. Verifica tus datos con la Coordinación.'
+          json?.error || 'No se pudo autenticar. Verifica tu conexión e inténtalo de nuevo.'
         );
         setLoading(false);
         return;
       }
 
-      if (!matchedUser.activo) {
-        setError(
-          `La cuenta de ${matchedUser.nombre} está actualmente INACTIVA. Comunícate con la administración.`
-        );
-        setLoading(false);
-        return;
-      }
-
-      if (matchedUser.rol === 'Cliente') {
-        setError(
-          'Esta cuenta está registrada como Aprendiz. Para realizar pedidos y consultar turnos, por favor utiliza la pantalla de Identificación de Aprendiz.'
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Role is automatically verified and retrieved from database
       setLoading(false);
-      onLoginSuccess(matchedUser.rol, matchedUser.email, matchedUser.nombre);
-    }, 250);
+      onLoginSuccess(json.rol, json.email || term, json.nombre || 'Personal CGAO');
+    } catch (err: any) {
+      setError(
+        err?.message || 'No se pudo conectar con el servidor de autenticación. Inténtalo de nuevo.'
+      );
+      setLoading(false);
+    }
   };
 
   return (
@@ -202,41 +182,6 @@ export const AccesoPersonalScreen: React.FC<AccesoPersonalScreenProps> = ({
             )}
           </button>
         </form>
-
-        {/* Quick helper: Authorized staff accounts */}
-        <div className="mt-5 pt-4 border-t border-white/10">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <Users className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Cuentas Autorizadas de Personal CGAO:</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {staffAccounts.map((acc) => (
-              <button
-                key={acc.id}
-                type="button"
-                onClick={() => handleQuickFill(acc)}
-                className={`p-2 rounded-lg border text-left transition-all cursor-pointer flex items-center justify-between ${
-                  identifier === acc.email
-                    ? 'border-indigo-500 bg-indigo-950/50 ring-1 ring-indigo-400/40'
-                    : 'border-white/5 bg-[#0e1526] hover:bg-[#151f38] hover:border-white/15'
-                }`}
-              >
-                <div className="min-w-0 pr-1">
-                  <p className="text-xs font-semibold text-white truncate">
-                    {acc.nombre}
-                  </p>
-                  <p className="text-[10px] text-slate-400 truncate font-mono">
-                    {acc.email}
-                  </p>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-white/10 text-indigo-300 shrink-0">
-                  {acc.rol}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Footer info */}
         <div className="mt-5 pt-3 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400">
