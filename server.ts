@@ -16,6 +16,46 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 
+// Server-side Supabase client credentials come ONLY from process.env (no hardcoded fallbacks)
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || '';
+
+// Si faltan variables de entorno, se arranca en MODO DEGRADADO (sin throw):
+// supabaseServer queda en null y los endpoints /api/supabase/* responden 503.
+const missingSupabaseVars: string[] = [];
+if (!SUPABASE_URL) missingSupabaseVars.push('SUPABASE_URL');
+if (!SUPABASE_SERVICE_ROLE_KEY) missingSupabaseVars.push('SUPABASE_SERVICE_ROLE_KEY');
+
+if (missingSupabaseVars.length > 0) {
+  console.error(
+    '[Supabase] Configuración incompleta en variables de entorno. Faltan: ' +
+    missingSupabaseVars.join(', ') +
+    '. Iniciando en MODO DEGRADADO: los endpoints /api/supabase/* responderán 503 ' +
+    'y el healthcheck reportará supabase:false.'
+  );
+}
+
+// El cliente solo se inicializa con credenciales completas; en modo degradado el
+// valor en runtime es null (el middleware de abajo responde 503 antes de tocar la
+// base). El cast conserva el tipado inferido del cliente sin añadir `any`.
+const supabaseServerUnsafe = missingSupabaseVars.length
+  ? null
+  : createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { persistSession: false },
+    });
+
+const supabaseServer = supabaseServerUnsafe as Exclude<typeof supabaseServerUnsafe, null>;
+
+// Middleware de degradación: con supabaseServer en null, todo /api/supabase/* -> 503
+app.use('/api/supabase', (req, res, next) => {
+  if (!supabaseServer) {
+    res.status(503).json({ error: 'Supabase no configurado en variables de entorno' });
+    return;
+  }
+  next();
+});
+
 // Security Headers Middleware (OWASP recommended)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -26,9 +66,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Healthcheck Endpoint
+// Healthcheck Endpoint (200 siempre => Coolify detecta el contenedor como healthy)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Cafetería SENA CGAO Backend' });
+  res.json({
+    status: 'ok',
+    service: 'Cafetería SENA CGAO Backend',
+    supabase: !!supabaseServer,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -93,6 +137,13 @@ function rolAplicacion(rol: string | null, esAdmin: boolean): 'Admin' | 'Cajero'
 
 app.post('/api/auth/login', async (req, res) => {
   try {
+    if (!supabaseServer) {
+      return res.status(503).json({
+        success: false,
+        error: 'Supabase no configurado en variables de entorno',
+      });
+    }
+
     const identifier = String(req.body?.identifier || '').trim();
     const password = String(req.body?.password || '');
 
@@ -168,23 +219,6 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || 'Error interno de autenticación.' });
   }
-});
-
-// Server-side Supabase client credentials come ONLY from process.env (no hardcoded fallbacks)
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || '';
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error(
-    '[Supabase] Faltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en las variables de entorno. ' +
-    'Configura el archivo .env antes de iniciar el servidor.'
-  );
-  throw new Error('Supabase no configurado: faltan SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY');
-}
-
-const supabaseServer = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!, {
-  auth: { persistSession: false },
 });
 
 // Supabase Status Diagnostic Endpoint
@@ -646,7 +680,11 @@ async function startServer() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Cafetería CGAO Server running on http://0.0.0.0:${PORT}`);
-    console.log(`Supabase linked (Read/Write Mode): ${SUPABASE_URL}`);
+    if (supabaseServer) {
+      console.log(`Supabase linked (Read/Write Mode): ${SUPABASE_URL}`);
+    } else {
+      console.log('Supabase NOT configured - running degraded (/api/supabase/* respondirá 503)');
+    }
   });
 
   // Graceful shutdown handling for Docker and Coolify containers
