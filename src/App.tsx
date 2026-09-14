@@ -150,10 +150,14 @@ export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   // Active Order (created in handleConfirmOrder)
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [activeOrder, setActiveOrder] = useState<Order | null>(() => {
+    try { return JSON.parse(localStorage.getItem('cgao_active_order') || 'null'); } catch { return null; }
+  });
 
   // ID de la venta en la BD (para hacer polling del estado real)
-  const [activeVentaId, setActiveVentaId] = useState<number | null>(null);
+  const [activeVentaId, setActiveVentaId] = useState<number | null>(() => {
+    try { return JSON.parse(localStorage.getItem('cgao_active_venta') || 'null'); } catch { return null; }
+  });
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
@@ -228,6 +232,7 @@ export default function App() {
     };
 
     setActiveOrder(newOrder);
+    localStorage.setItem('cgao_active_order', JSON.stringify(newOrder));
     soundEngine.playCafeteriaBell();
     setCurrentScreen('mi_turno');
 
@@ -235,6 +240,7 @@ export default function App() {
     recordVentaToSupabase(newOrder).then((idventa) => {
       if (idventa) {
         setActiveVentaId(idventa);
+        localStorage.setItem('cgao_active_venta', String(idventa));
         setActiveOrder((prev) =>
           prev && prev.id === newOrder.id ? { ...prev, idVenta: `#VTA-${idventa}` } : prev
         );
@@ -299,6 +305,18 @@ export default function App() {
 
     return () => clearInterval(poll);
   }, [activeVentaId, currentScreen]);
+
+  useEffect(() => {
+    if (role === 'Cliente') return; // Los clientes no persisten pantalla
+    const session = (() => {
+      try { return JSON.parse(localStorage.getItem('cgao_session') || 'null'); } catch { return null; }
+    })();
+    if (!session) return;
+    localStorage.setItem('cgao_session', JSON.stringify({
+      ...session,
+      screen: currentScreen,
+    }));
+  }, [currentScreen]);
 
   // Login handler from AccesoPersonalScreen
   const handleLoginSuccess = (newRole: UserRole, email: string, name: string) => {
@@ -602,7 +620,11 @@ export default function App() {
               (activeOrder ? (
                 <MiTurnoScreen
                   order={activeOrder}
-                  onNewOrder={() => setCurrentScreen('catalogo')}
+                  onNewOrder={() => {
+                    localStorage.removeItem('cgao_active_order');
+                    localStorage.removeItem('cgao_active_venta');
+                    setCurrentScreen('catalogo');
+                  }}
                   onOpenReceipt={() => setShowReceiptModal(true)}
                   onAdvanceState={handleAdvanceState}
                 />

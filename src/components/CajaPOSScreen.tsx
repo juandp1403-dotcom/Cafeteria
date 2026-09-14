@@ -49,31 +49,37 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
 
   // Cargar las ventas reales (venta + detalle + cliente) desde Supabase
   useEffect(() => {
-    fetchVentasFromSupabase().then((ventas) => {
-      if (!ventas || ventas.length === 0) return;
-      setOrders((prev) => (prev.length === 0 ? ventas : prev));
-      setRecentPaid(
-        ventas
-          .filter((v) => v.estado === 'cobrado')
-          .slice(0, 8)
-          .map((v) => ({
-            id: `rec-${v.id}`,
-            turno: v.numeroTurno,
-            nombre: v.clienteNombre,
-            hora: new Date(v.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
-            metodo: v.metodoPago,
-            total: v.total,
-            fecha: v.fecha,
-          }))
-      );
+    const load = () => {
+      fetchVentasFromSupabase().then((ventas) => {
+        if (!ventas || ventas.length === 0) return;
+        setOrders(ventas);
+        setRecentPaid(
+          ventas
+            .filter((v) => v.estado === 'cobrado')
+            .slice(0, 8)
+            .map((v) => ({
+              id: `rec-${v.id}`,
+              turno: v.numeroTurno,
+              nombre: v.clienteNombre,
+              hora: new Date(v.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+              metodo: v.metodoPago,
+              total: v.total,
+              fecha: v.fecha,
+            }))
+        );
 
-      const pagadasHoy = ventas.filter((v) => v.estado === 'cobrado' && v.fecha === 'Hoy');
-      const totalHoy = pagadasHoy.reduce((acc, v) => acc + v.total, 0);
-      const efectivoHoy = pagadasHoy.filter((v) => v.metodoPago === 'Efectivo').reduce((acc, v) => acc + v.total, 0);
-      setRecaudoManana(totalHoy);
-      setEfectivoEnCaja(efectivoHoy);
-      setDigitalTarjeta(totalHoy - efectivoHoy);
-    });
+        const pagadasHoy = ventas.filter((v) => v.estado === 'cobrado' && v.fecha === 'Hoy');
+        const totalHoy = pagadasHoy.reduce((acc, v) => acc + v.total, 0);
+        const efectivoHoy = pagadasHoy.filter((v) => v.metodoPago === 'Efectivo').reduce((acc, v) => acc + v.total, 0);
+        setRecaudoManana(totalHoy);
+        setEfectivoEnCaja(efectivoHoy);
+        setDigitalTarjeta(totalHoy - efectivoHoy);
+      });
+    };
+
+    load();
+    const poll = setInterval(load, 10000);
+    return () => clearInterval(poll);
   }, []);
 
   // Products metrics requested:

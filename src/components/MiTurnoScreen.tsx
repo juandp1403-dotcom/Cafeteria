@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order, OrderStatus, ServiceReview } from '../types';
 import { 
   CheckCircle2, 
@@ -34,6 +34,20 @@ export const MiTurnoScreen: React.FC<MiTurnoScreenProps> = ({
   onSubmitReview,
 }) => {
   const [bellRinging, setBellRinging] = useState(false);
+
+  const prevEstadoRef = React.useRef(order.estado);
+
+  useEffect(() => {
+    const prev = prevEstadoRef.current;
+    const curr = order.estado;
+    prevEstadoRef.current = curr;
+
+    if (prev !== 'listo_recoger' && curr === 'listo_recoger') {
+      setBellRinging(true);
+      soundEngine.playCafeteriaBell();
+      setTimeout(() => setBellRinging(false), 1200);
+    }
+  }, [order.estado]);
 
   // Review states
   const [calificacion, setCalificacion] = useState<number>(5);
