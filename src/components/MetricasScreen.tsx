@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ProductItem } from '../types';
+import { ProductItem, POSOrder } from '../types';
 import { fetchVentasFromSupabase } from '../lib/supabase';
 import { 
   BarChart3, 
@@ -28,6 +28,27 @@ interface MetricasScreenProps {
 
 export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
   const [activeChartTab, setActiveChartTab] = useState<'semana_dias' | 'meses_ano'>('semana_dias');
+  const [ventas, setVentas] = useState<POSOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Cargar ventas reales desde la base de datos Supabase
+  useEffect(() => {
+    let active = true;
+    const loadVentas = () => {
+      fetchVentasFromSupabase().then((data) => {
+        if (active) {
+          setVentas(data || []);
+          setIsLoading(false);
+        }
+      });
+    };
+    loadVentas();
+    const interval = setInterval(loadVentas, 25000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Products with zero stock
   const productosSinStock = useMemo(() => {
@@ -39,78 +60,202 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
     return products.filter((p) => p.stock <= (p.alertaStock || 8));
   }, [products]);
 
-  // Pedidos despachados hoy (total delivered today) -- sincronizado con Supabase
-  const [pedidosDespachadosHoy, setPedidosDespachadosHoy] = useState(148);
-  const [totalVentasDia, setTotalVentasDia] = useState(1245000);
-  const satisfaccionGeneral = 98.4;
+  // Cálculos dinámicos de ventas del día
+  const ventasHoy = useMemo(() => {
+    return ventas.filter((v) => v.fecha === 'Hoy');
+  }, [ventas]);
 
-  // Cargar KPIs del día desde la tabla real `venta`
-  useEffect(() => {
-    fetchVentasFromSupabase().then((ventas) => {
-      if (!ventas || ventas.length === 0) return;
-      const hoy = ventas.filter((v) => v.fecha === 'Hoy');
-      setPedidosDespachadosHoy(hoy.filter((v) => v.estadoDb === 'Entregado').length);
-      setTotalVentasDia(
-        hoy
-          .filter((v) => v.estado !== 'pendiente' && v.estado !== 'anulado')
-          .reduce((acc, v) => acc + v.total, 0)
-      );
+  const pedidosDespachadosHoy = useMemo(() => {
+    return ventasHoy.filter(
+      (v) => v.estadoDb === 'Entregado' || v.estado === 'cobrado'
+    ).length;
+  }, [ventasHoy]);
+
+  const totalVentasDia = useMemo(() => {
+    return ventasHoy
+      .filter((v) => v.estado !== 'pendiente' && v.estado !== 'anulado')
+      .reduce((acc, v) => acc + v.total, 0);
+  }, [ventasHoy]);
+
+  const totalPedidosHoy = ventasHoy.length;
+
+  const tasaCumplimiento = useMemo(() => {
+    if (totalPedidosHoy === 0) return 100;
+    return Math.round((pedidosDespachadosHoy / totalPedidosHoy) * 100);
+  }, [pedidosDespachadosHoy, totalPedidosHoy]);
+
+  // Chart Data 1: Ventas en la Semana Laboral (Lunes a Viernes) - Calculado con ventas reales
+  const diasSemanaSales = useMemo(() => {
+    const nombresDias = [
+      { key: 1, dia: 'Lunes' },
+      { key: 2, dia: 'Martes' },
+      { key: 3, dia: 'Miércoles' },
+      { key: 4, dia: 'Jueves' },
+      { key: 5, dia: 'Viernes' },
+    ];
+
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    const day = startOfWeek.getDay();
+    const diffToMon = day === 0 ? -6 : 1 - day;
+    startOfWeek.setDate(startOfWeek.getDate() + diffToMon);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 5);
+
+    const ventasSemana = ventas.filter((v) => {
+      const d = new Date(v.timestamp);
+      return d >= startOfWeek && d < endOfWeek;
     });
-  }, []);
 
-  // Chart Data 1: Ventas en la Semana Laboral (Lunes a Viernes)
-  const diasSemanaSales = [
-    { dia: 'Lunes', monto: 1420000, pedidos: 142, topProducto: 'Empanada de Carne (48 u)', porcentaje: '71%' },
-    { dia: 'Martes', monto: 1650000, pedidos: 168, topProducto: 'Café Americano (65 u)', porcentaje: '83%' },
-    { dia: 'Miércoles', monto: 1980000, pedidos: 195, topProducto: 'Almuerzo Ejecutivo (82 u)', porcentaje: '100%', esPico: true },
-    { dia: 'Jueves', monto: 1720000, pedidos: 174, topProducto: 'Jugo de Naranja 16oz (58 u)', porcentaje: '87%' },
-    { dia: 'Viernes', monto: 1640000, pedidos: 161, topProducto: 'Hamburguesa Artesanal (52 u)', porcentaje: '82%' },
-  ];
+    const result = nombresDias.map(({ key, dia }) => {
+      const ventasDelDia = ventasSemana.filter((v) => {
+        const d = new Date(v.timestamp);
+        return d.getDay() === key;
+      });
 
-  const totalVentasSemana = diasSemanaSales.reduce((acc, d) => acc + d.monto, 0);
-  const totalPedidosSemana = diasSemanaSales.reduce((acc, d) => acc + d.pedidos, 0);
-  const diaMayorVenta = diasSemanaSales.find((d) => d.esPico) || diasSemanaSales[2];
+      const monto = ventasDelDia
+        .filter((v) => v.estado !== 'anulado')
+        .reduce((acc, v) => acc + v.total, 0);
+      const pedidos = ventasDelDia.length;
 
-  // Chart Data 2: Ventas Mensuales del Año (12 Meses: Ene a Dic)
-  const mesesAnoSales = [
-    { mes: 'Ene', nombreCompleto: 'Enero', monto: 14200000, raciones: 1420, porcentaje: '57%' },
-    { mes: 'Feb', nombreCompleto: 'Febrero', monto: 17800000, raciones: 1820, porcentaje: '72%' },
-    { mes: 'Mar', nombreCompleto: 'Marzo', monto: 19500000, raciones: 1980, porcentaje: '79%' },
-    { mes: 'Abr', nombreCompleto: 'Abril (Semana Santa)', monto: 16400000, raciones: 1650, porcentaje: '66%' },
-    { mes: 'May', nombreCompleto: 'Mayo', monto: 21200000, raciones: 2150, porcentaje: '85%' },
-    { mes: 'Jun', nombreCompleto: 'Junio', monto: 18900000, raciones: 1920, porcentaje: '76%' },
-    { mes: 'Jul', nombreCompleto: 'Julio', monto: 17300000, raciones: 1750, porcentaje: '70%' },
-    { mes: 'Ago', nombreCompleto: 'Agosto (Récord Anual)', monto: 24800000, raciones: 2520, porcentaje: '100%', esPico: true },
-    { mes: 'Sep', nombreCompleto: 'Septiembre (En Curso)', monto: 21400000, raciones: 2180, porcentaje: '86%' },
-    { mes: 'Oct', nombreCompleto: 'Octubre (Proyectado)', monto: 22100000, raciones: 2250, porcentaje: '89%' },
-    { mes: 'Nov', nombreCompleto: 'Noviembre (Proyectado)', monto: 20600000, raciones: 2100, porcentaje: '83%' },
-    { mes: 'Dic', nombreCompleto: 'Diciembre (Cierre)', monto: 15800000, raciones: 1600, porcentaje: '64%' },
-  ];
+      const productCounts: Record<string, number> = {};
+      ventasDelDia.forEach((v) => {
+        (v.items || []).forEach((item) => {
+          productCounts[item.nombre] = (productCounts[item.nombre] || 0) + item.cantidad;
+        });
+      });
 
-  const totalVentasAnual = mesesAnoSales.reduce((acc, m) => acc + m.monto, 0);
-  const totalRacionesAnual = mesesAnoSales.reduce((acc, m) => acc + m.raciones, 0);
-  const mesMayorVenta = mesesAnoSales.find((m) => m.esPico) || mesesAnoSales[7];
+      const topProdEntry = Object.entries(productCounts).sort((a, b) => b[1] - a[1])[0];
+      const topProducto = topProdEntry
+        ? `${topProdEntry[0]} (${topProdEntry[1]} u)`
+        : 'Sin ventas';
 
-  // Top 15 productos más vendidos de la semana
-  const top15ProductosSemana = [
-    { rank: 1, nombre: 'Empanada de Carne', categoria: 'Comida Rápida', unidades: 430, precio: 3500, total: 1505000 },
-    { rank: 2, nombre: 'Almuerzo Ejecutivo SENA', categoria: 'Combos SENA', unidades: 348, precio: 11500, total: 4002000 },
-    { rank: 3, nombre: 'Café Americano CGAO', categoria: 'Café & Calientes', unidades: 312, precio: 2200, total: 686400 },
-    { rank: 4, nombre: 'Jugo de Naranja 16oz', categoria: 'Bebidas Frías', unidades: 265, precio: 4000, total: 1060000 },
-    { rank: 5, nombre: 'Hamburguesa Artesanal', categoria: 'Comida Rápida', unidades: 210, precio: 12000, total: 2520000 },
-    { rank: 6, nombre: 'Pandebono Tradicional', categoria: 'Panadería', unidades: 195, precio: 2800, total: 546000 },
-    { rank: 7, nombre: 'Pastel de Pollo Hojaldrado', categoria: 'Comida Rápida', unidades: 182, precio: 3800, total: 691600 },
-    { rank: 8, nombre: 'Café con Leche Campesino', categoria: 'Café & Calientes', unidades: 164, precio: 2800, total: 459200 },
-    { rank: 9, nombre: 'Avena Helada Casera', categoria: 'Bebidas Frías', unidades: 148, precio: 2500, total: 370000 },
-    { rank: 10, nombre: 'Sánduche Pollo & Aguacate', categoria: 'Comida Rápida', unidades: 132, precio: 9500, total: 1254000 },
-    { rank: 11, nombre: 'Porción Torta de Zanahoria', categoria: 'Repostería', unidades: 115, precio: 3200, total: 368000 },
-    { rank: 12, nombre: 'Limonada Natural Fría', categoria: 'Bebidas Frías', unidades: 108, precio: 2500, total: 270000 },
-    { rank: 13, nombre: 'Deditos de Queso Hojaldre', categoria: 'Comida Rápida', unidades: 96, precio: 2500, total: 240000 },
-    { rank: 14, nombre: 'Yogurt con Granola y Fruta', categoria: 'Desayunos', unidades: 88, precio: 4500, total: 396000 },
-    { rank: 15, nombre: 'Capuchino Vainilla 9oz', categoria: 'Café & Calientes', unidades: 82, precio: 4200, total: 344400 },
-  ];
+      return {
+        dia,
+        monto,
+        pedidos,
+        topProducto,
+      };
+    });
+
+    const maxMonto = Math.max(...result.map((d) => d.monto), 0);
+
+    return result.map((item) => ({
+      ...item,
+      porcentaje: maxMonto > 0 && item.monto > 0 ? `${Math.max(12, Math.round((item.monto / maxMonto) * 100))}%` : '4%',
+      esPico: maxMonto > 0 && item.monto === maxMonto,
+    }));
+  }, [ventas]);
+
+  const totalVentasSemana = useMemo(() => diasSemanaSales.reduce((acc, d) => acc + d.monto, 0), [diasSemanaSales]);
+  const totalPedidosSemana = useMemo(() => diasSemanaSales.reduce((acc, d) => acc + d.pedidos, 0), [diasSemanaSales]);
+  const diaMayorVenta = useMemo(() => diasSemanaSales.find((d) => d.esPico) || diasSemanaSales[0], [diasSemanaSales]);
+
+  // Chart Data 2: Ventas Mensuales del Año (12 Meses: Ene a Dic) - Calculado con ventas reales
+  const mesesAnoSales = useMemo(() => {
+    const mesesDef = [
+      { mes: 'Ene', nombreCompleto: 'Enero' },
+      { mes: 'Feb', nombreCompleto: 'Febrero' },
+      { mes: 'Mar', nombreCompleto: 'Marzo' },
+      { mes: 'Abr', nombreCompleto: 'Abril' },
+      { mes: 'May', nombreCompleto: 'Mayo' },
+      { mes: 'Jun', nombreCompleto: 'Junio' },
+      { mes: 'Jul', nombreCompleto: 'Julio' },
+      { mes: 'Ago', nombreCompleto: 'Agosto' },
+      { mes: 'Sep', nombreCompleto: 'Septiembre' },
+      { mes: 'Oct', nombreCompleto: 'Octubre' },
+      { mes: 'Nov', nombreCompleto: 'Noviembre' },
+      { mes: 'Dic', nombreCompleto: 'Diciembre' },
+    ];
+
+    const currentYear = new Date().getFullYear();
+
+    const result = mesesDef.map((m, idx) => {
+      const ventasDelMes = ventas.filter((v) => {
+        const d = new Date(v.timestamp);
+        return d.getFullYear() === currentYear && d.getMonth() === idx;
+      });
+
+      const monto = ventasDelMes
+        .filter((v) => v.estado !== 'anulado')
+        .reduce((acc, v) => acc + v.total, 0);
+
+      const raciones = ventasDelMes.reduce((acc, v) => {
+        const itemsCount = (v.items || []).reduce((sum, it) => sum + it.cantidad, 0);
+        return acc + (itemsCount || 1);
+      }, 0);
+
+      return {
+        mes: m.mes,
+        nombreCompleto: m.nombreCompleto,
+        monto,
+        raciones,
+      };
+    });
+
+    const maxMonto = Math.max(...result.map((m) => m.monto), 0);
+
+    return result.map((item) => ({
+      ...item,
+      porcentaje: maxMonto > 0 && item.monto > 0 ? `${Math.max(12, Math.round((item.monto / maxMonto) * 100))}%` : '4%',
+      esPico: maxMonto > 0 && item.monto === maxMonto,
+    }));
+  }, [ventas]);
+
+  const totalVentasAnual = useMemo(() => mesesAnoSales.reduce((acc, m) => acc + m.monto, 0), [mesesAnoSales]);
+  const totalRacionesAnual = useMemo(() => mesesAnoSales.reduce((acc, m) => acc + m.raciones, 0), [mesesAnoSales]);
+  const mesMayorVenta = useMemo(() => mesesAnoSales.find((m) => m.esPico) || mesesAnoSales[new Date().getMonth()], [mesesAnoSales]);
+
+  // Top 15 productos más vendidos - Calculado a partir de las ventas reales
+  const top15ProductosSemana = useMemo(() => {
+    const agg: Record<string, { nombre: string; unidades: number; total: number; precio: number; categoria: string }> = {};
+
+    ventas.forEach((v) => {
+      if (v.estado === 'anulado') return;
+      (v.items || []).forEach((it) => {
+        const key = it.nombre.trim();
+        const matchingProduct = products.find(
+          (p) => p.nombre.toLowerCase().trim() === key.toLowerCase()
+        );
+        const categoria = matchingProduct?.categoriaLabel || 'Consumo CGAO';
+        const precio = it.precio || matchingProduct?.precio || 0;
+
+        if (!agg[key]) {
+          agg[key] = {
+            nombre: key,
+            unidades: 0,
+            total: 0,
+            precio,
+            categoria,
+          };
+        }
+        agg[key].unidades += it.cantidad;
+        agg[key].total += it.cantidad * precio;
+      });
+    });
+
+    return Object.values(agg)
+      .sort((a, b) => b.unidades - a.unidades || b.total - a.total)
+      .slice(0, 15)
+      .map((item, idx) => ({
+        rank: idx + 1,
+        ...item,
+      }));
+  }, [ventas, products]);
 
   const handleExportTop15 = () => {
+    if (top15ProductosSemana.length === 0) {
+      const rows = [
+        ['RANKING TOP 15 PRODUCTOS MÁS VENDIDOS - CGAO VÉLEZ'],
+        [`Fecha de corte: ${new Date().toLocaleDateString('es-CO')}`],
+        [],
+        ['Estado: No se registran ventas acumuladas en el sistema aún.'],
+      ];
+      downloadCSV('Top15_Productos_Semana_CGAO.csv', rows);
+      return;
+    }
     const rows = [
       ['RANKING TOP 15 PRODUCTOS MÁS VENDIDOS DE LA SEMANA - CGAO VÉLEZ 2026'],
       [`Fecha de corte: ${new Date().toLocaleDateString('es-CO')}`],
@@ -172,14 +317,19 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
             <span className="text-xs font-medium text-slate-400">entregados</span>
           </div>
           <div className="w-full h-1.5 rounded-full bg-slate-800 mt-2 overflow-hidden">
-            <div className="h-full bg-emerald-500 w-[74%]" />
+            <div 
+              className="h-full bg-emerald-500 transition-all duration-500"
+              style={{ width: `${totalPedidosHoy > 0 ? Math.min(100, Math.round((pedidosDespachadosHoy / totalPedidosHoy) * 100)) : 0}%` }}
+            />
           </div>
           <span className="text-[10px] text-emerald-400 font-semibold mt-1 block">
-            100% de órdenes entregadas con éxito hoy
+            {totalPedidosHoy > 0
+              ? `${Math.round((pedidosDespachadosHoy / totalPedidosHoy) * 100)}% de órdenes entregadas hoy (${pedidosDespachadosHoy}/${totalPedidosHoy})`
+              : 'Sin pedidos pendientes por entregar hoy'}
           </span>
         </div>
 
-        {/* Card 2: TOTAL VENTAS DÍA (Replaced Subsidio Beca) */}
+        {/* Card 2: TOTAL VENTAS DÍA */}
         <div className="glass-card rounded-2xl p-4 border border-indigo-500/20 bg-indigo-950/20 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
             <span className="font-bold text-indigo-300 uppercase tracking-wider text-[10px]">
@@ -192,12 +342,12 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
             <span className="text-xs font-medium text-slate-300">COP</span>
           </div>
           <span className="text-[10px] text-indigo-300 font-semibold mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-            +14.2% vs. promedio del mismo día semana anterior
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            {totalPedidosHoy} transacciones registradas hoy
           </span>
         </div>
 
-        {/* Card 3: PRODUCTOS SIN STOCK (Replaced Tiempo Promedio) */}
+        {/* Card 3: PRODUCTOS SIN STOCK */}
         <div className="glass-card rounded-2xl p-4 border border-red-500/20 bg-red-950/20 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
             <span className="font-bold text-red-300 uppercase tracking-wider text-[10px]">
@@ -216,19 +366,21 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
           </span>
         </div>
 
-        {/* Card 4: Satisfacción del Aprendiz */}
+        {/* Card 4: Cumplimiento Operacional */}
         <div className="glass-card rounded-2xl p-4 border border-white/10 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
             <span className="font-bold text-slate-300 uppercase tracking-wider text-[10px]">
-              SATISFACCIÓN DEL APRENDIZ
+              CUMPLIMIENTO OPERACIONAL
             </span>
             <ShieldCheck className="w-4 h-4 text-[#39a900]" />
           </div>
           <div className="text-3xl font-black text-[#39a900] font-display">
-            {satisfaccionGeneral}%
+            {tasaCumplimiento}%
           </div>
           <span className="text-[10px] text-slate-400 mt-1 block">
-            Basado en 320 valoraciones de calidad de servicio 2026
+            {totalPedidosHoy > 0
+              ? `${pedidosDespachadosHoy} de ${totalPedidosHoy} órdenes despachadas a tiempo`
+              : 'Operación institucional en línea y disponible'}
           </span>
         </div>
       </div>
@@ -294,7 +446,9 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
               <div className="flex items-center gap-2 text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2.5 py-1 rounded-lg">
                 <Trophy className="w-3.5 h-3.5 text-amber-400" />
                 <span className="font-bold text-[11px]">
-                  Día con mayor venta: {diaMayorVenta.dia} (${(diaMayorVenta.monto / 1000000).toFixed(2)}M COP)
+                  {totalVentasSemana > 0
+                    ? `Día con mayor venta: ${diaMayorVenta.dia} ($${(diaMayorVenta.monto / 1000000).toFixed(2)}M COP)`
+                    : 'Día con mayor venta: N/A'}
                 </span>
               </div>
             </div>
@@ -346,7 +500,17 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
 
             {/* Bottom summary note */}
             <div className="text-center text-[11px] text-slate-400">
-              El <span className="text-white font-bold">{diaMayorVenta.dia}</span> concentra el <span className="text-amber-400 font-bold">{((diaMayorVenta.monto / totalVentasSemana) * 100).toFixed(1)}%</span> del total semanal por mayor afluencia de jornadas de taller y prácticas de campo.
+              {totalVentasSemana > 0 ? (
+                <>
+                  El <span className="text-white font-bold">{diaMayorVenta.dia}</span> concentra el{' '}
+                  <span className="text-amber-400 font-bold">
+                    {((diaMayorVenta.monto / totalVentasSemana) * 100).toFixed(1)}%
+                  </span>{' '}
+                  del total semanal con ${diaMayorVenta.monto.toLocaleString('es-CO')} COP recaudados.
+                </>
+              ) : (
+                <span>Sin ventas registradas en la semana laboral actual.</span>
+              )}
             </div>
           </div>
         ) : (
@@ -359,13 +523,15 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
                 </span>
                 <span className="text-slate-500">•</span>
                 <span className="text-slate-300">
-                  Total Anual Proyectado: <strong className="text-emerald-400 font-mono">${(totalVentasAnual / 1000000).toFixed(1)}M COP</strong> ({totalRacionesAnual.toLocaleString('es-CO')} raciones)
+                  Total Anual: <strong className="text-emerald-400 font-mono">${(totalVentasAnual / 1000000).toFixed(1)}M COP</strong> ({totalRacionesAnual.toLocaleString('es-CO')} raciones)
                 </span>
               </div>
               <div className="flex items-center gap-2 text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2.5 py-1 rounded-lg">
                 <Trophy className="w-3.5 h-3.5 text-amber-400" />
                 <span className="font-bold text-[11px]">
-                  Mes con mayor venta: {mesMayorVenta.nombreCompleto} (${(mesMayorVenta.monto / 1000000).toFixed(1)}M COP)
+                  {totalVentasAnual > 0
+                    ? `Mes con mayor venta: ${mesMayorVenta.nombreCompleto} ($${(mesMayorVenta.monto / 1000000).toFixed(1)}M COP)`
+                    : 'Mes con mayor venta: N/A'}
                 </span>
               </div>
             </div>
@@ -413,7 +579,14 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
 
             {/* Bottom summary note */}
             <div className="text-center text-[11px] text-slate-400">
-              <span className="text-amber-400 font-bold">{mesMayorVenta.nombreCompleto}</span> registró la mayor demanda alimentaria del año con <span className="text-white font-bold">{mesMayorVenta.raciones.toLocaleString('es-CO')} raciones</span>, impulsado por el ingreso de nuevas fichas de formación técnica y agropecuaria.
+              {totalVentasAnual > 0 ? (
+                <>
+                  <span className="text-amber-400 font-bold">{mesMayorVenta.nombreCompleto}</span> registra el mayor volumen anual con{' '}
+                  <span className="text-white font-bold">{mesMayorVenta.raciones.toLocaleString('es-CO')} raciones</span> (${mesMayorVenta.monto.toLocaleString('es-CO')} COP).
+                </>
+              ) : (
+                <span>Sin transacciones consolidadas en el año fiscal {new Date().getFullYear()}.</span>
+              )}
             </div>
           </div>
         )}
@@ -454,36 +627,44 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {productosStockBajo.map((prod) => {
-                  const isAgotado = prod.stock === 0;
-                  return (
-                    <tr key={prod.id} className="hover:bg-white/5 transition-colors">
-                      <td className="py-2.5 px-3">
-                        <div className="font-bold text-white text-xs">{prod.nombre}</div>
-                        <div className="text-[10px] text-slate-400">{prod.categoriaLabel}</div>
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-mono font-bold text-xs">
-                        <span className={isAgotado ? 'text-red-400' : 'text-amber-400'}>
-                          {prod.stock} un.
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-mono text-slate-400 text-xs">
-                        {prod.alertaStock || 8} un.
-                      </td>
-                      <td className="py-2.5 px-2 text-right">
-                        {isAgotado ? (
-                          <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-red-950/80 text-red-400 border border-red-500/30 uppercase">
-                            Agotado
+                {productosStockBajo.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-500">
+                      No hay productos con stock crítico en este momento
+                    </td>
+                  </tr>
+                ) : (
+                  productosStockBajo.map((prod) => {
+                    const isAgotado = prod.stock === 0;
+                    return (
+                      <tr key={prod.id} className="hover:bg-white/5 transition-colors">
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-white text-xs">{prod.nombre}</div>
+                          <div className="text-[10px] text-slate-400">{prod.categoriaLabel}</div>
+                        </td>
+                        <td className="py-2.5 px-2 text-center font-mono font-bold text-xs">
+                          <span className={isAgotado ? 'text-red-400' : 'text-amber-400'}>
+                            {prod.stock} un.
                           </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-500/30 uppercase">
-                            Alerta
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td className="py-2.5 px-2 text-center font-mono text-slate-400 text-xs">
+                          {prod.alertaStock || 8} un.
+                        </td>
+                        <td className="py-2.5 px-2 text-right">
+                          {isAgotado ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-red-950/80 text-red-400 border border-red-500/30 uppercase">
+                              Agotado
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-500/30 uppercase">
+                              Alerta
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -521,28 +702,42 @@ export const MetricasScreen: React.FC<MetricasScreenProps> = ({ products }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {top15ProductosSemana.map((item) => (
-                  <tr key={item.rank} className="hover:bg-white/5 transition-colors">
-                    <td className="py-2 px-2 text-center font-black text-xs text-indigo-400 font-display">
-                      {item.rank <= 3 ? `🥇 #${item.rank}` : `#${item.rank}`}
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className="font-bold text-white text-xs">{item.nombre}</span>
-                      <span className="text-[10px] text-slate-400 block sm:hidden">
-                        ${item.precio.toLocaleString('es-CO')}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-[11px] text-slate-400">
-                      {item.categoria}
-                    </td>
-                    <td className="py-2 px-2 text-center font-mono font-bold text-emerald-400 text-xs">
-                      {item.unidades}
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono font-bold text-white text-xs">
-                      ${item.total.toLocaleString('es-CO')}
+                {top15ProductosSemana.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                      <div className="max-w-md mx-auto space-y-2">
+                        <ShoppingBag className="w-8 h-8 text-slate-600 mx-auto" />
+                        <div className="text-sm font-bold text-slate-300">No hay ventas registradas aún</div>
+                        <div className="text-xs text-slate-500">
+                          El ranking de los 15 productos más vendidos se calculará automáticamente en tiempo real a medida que se registren comandas en Caja POS o Kiosco digital.
+                        </div>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  top15ProductosSemana.map((item) => (
+                    <tr key={item.rank} className="hover:bg-white/5 transition-colors">
+                      <td className="py-2 px-2 text-center font-black text-xs text-indigo-400 font-display">
+                        {item.rank <= 3 ? `🥇 #${item.rank}` : `#${item.rank}`}
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className="font-bold text-white text-xs">{item.nombre}</span>
+                        <span className="text-[10px] text-slate-400 block sm:hidden">
+                          ${item.precio.toLocaleString('es-CO')}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-[11px] text-slate-400">
+                        {item.categoria}
+                      </td>
+                      <td className="py-2 px-2 text-center font-mono font-bold text-emerald-400 text-xs">
+                        {item.unidades}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-white text-xs">
+                        ${item.total.toLocaleString('es-CO')}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

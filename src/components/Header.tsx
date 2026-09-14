@@ -293,14 +293,16 @@ export const Header: React.FC<HeaderProps> = ({
 
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-indigo-950/80 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold font-display shrink-0 text-xs">
-                  {role === 'Cliente' ? user.nombre.charAt(0) : staffName?.charAt(0) || 'A'}
+                  {role === 'Cliente' ? (user.nombre ? user.nombre.charAt(0) : 'K') : (staffName ? staffName.charAt(0) : 'P')}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold text-white truncate">
-                    {role === 'Cliente' ? user.nombre : staffName}
+                    {role === 'Cliente' ? (user.nombre || 'Kiosco de Aprendices') : (staffName || 'Personal CGAO')}
                   </p>
                   <p className="text-[10px] text-slate-400 truncate">
-                    {role === 'Cliente' ? `Ficha: ${user.ficha} • ${user.documento}` : staffEmail || 'admin@sena.edu.co'}
+                    {role === 'Cliente' 
+                      ? (user.documento ? `Doc: ${user.documento}${user.ficha ? ` • Ficha: ${user.ficha}` : ''}` : 'Sin identificación previa') 
+                      : (staffEmail || 'Sesión Autorizada')}
                   </p>
                 </div>
               </div>
@@ -329,9 +331,8 @@ export const Header: React.FC<HeaderProps> = ({
                         onSelectScreen(page.id);
                         setSidebarOpen(false);
                       } else {
-                        // If user clicks a restricted screen, automatically elevate to Admin so they can view it
-                        onRoleChange('Admin');
-                        onSelectScreen(page.id);
+                        // Usuario sin permisos: redirigir a inicio de sesión institucional
+                        onSelectScreen('acceso_personal');
                         setSidebarOpen(false);
                       }
                     }}

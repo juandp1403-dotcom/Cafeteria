@@ -34,13 +34,20 @@ export const IdentificacionScreen: React.FC<IdentificacionScreenProps> = ({
     programa: user.programa || 'ADSO / Análisis y Desarrollo de Software',
   });
 
+  const [aceptaLey1581, setAceptaLey1581] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [successNotice, setSuccessNotice] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.documento.trim() || !formData.nombre.trim()) {
       setValidationError('Por favor completa el número de documento y tu nombre completo.');
+      return;
+    }
+
+    if (!aceptaLey1581) {
+      setValidationError(
+        'Debes aceptar los términos y tratamiento de datos personales conforme a la Ley 1581 de 2012 para poder continuar al sistema.'
+      );
       return;
     }
 
@@ -205,6 +212,31 @@ export const IdentificacionScreen: React.FC<IdentificacionScreenProps> = ({
             </div>
           </div>
 
+          {/* Checkbox Obligatorio Ley 1581 de 2012 */}
+          <div className="p-3 rounded-xl bg-[#0e1627] border border-white/10 hover:border-indigo-500/40 transition-colors">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                id="check-ley-1581"
+                type="checkbox"
+                checked={aceptaLey1581}
+                onChange={(e) => {
+                  setAceptaLey1581(e.target.checked);
+                  if (e.target.checked && validationError?.includes('1581')) {
+                    setValidationError(null);
+                  }
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-white/20 text-indigo-600 focus:ring-indigo-500 bg-[#0a0f1d] cursor-pointer shrink-0 accent-indigo-600"
+              />
+              <span className="text-xs text-slate-300 leading-snug">
+                Autorizo de manera previa, expresa e informada el tratamiento de mis datos personales según la{' '}
+                <strong className="text-white font-semibold underline decoration-indigo-400/50">
+                  Ley 1581 de 2012 (Habeas Data)
+                </strong>{' '}
+                y las políticas de privacidad y seguridad institucional del SENA.
+              </span>
+            </label>
+          </div>
+
           {/* Validation Alert */}
           {validationError && (
             <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-500/30 flex items-start gap-2 text-xs text-amber-300">
@@ -216,7 +248,12 @@ export const IdentificacionScreen: React.FC<IdentificacionScreenProps> = ({
           {/* Big Action Button */}
           <button
             type="submit"
-            className="w-full mt-2 py-3.5 px-6 rounded-xl font-display font-bold text-white text-sm sm:text-base flex items-center justify-center gap-2 transition-all duration-300 bg-gradient-to-r from-[#6366f1] via-[#4f46e5] to-[#39a900] hover:brightness-110 shadow-[0_4px_25px_rgba(99,102,241,0.4)] border border-white/20 active:scale-[0.99] cursor-pointer"
+            disabled={!aceptaLey1581}
+            className={`w-full mt-2 py-3.5 px-6 rounded-xl font-display font-bold text-white text-sm sm:text-base flex items-center justify-center gap-2 transition-all duration-300 border active:scale-[0.99] ${
+              aceptaLey1581
+                ? 'bg-gradient-to-r from-[#6366f1] via-[#4f46e5] to-[#39a900] hover:brightness-110 shadow-[0_4px_25px_rgba(99,102,241,0.4)] border-white/20 cursor-pointer'
+                : 'bg-white/5 text-slate-500 border-white/10 cursor-not-allowed opacity-60'
+            }`}
           >
             <span>Ingresar al Catálogo</span>
             <ArrowRight className="w-4 h-4" />

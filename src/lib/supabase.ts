@@ -221,7 +221,7 @@ export function mapItemToDbProducto(item: ProductItem): Partial<DbProducto> {
 
 export async function fetchProductsFromSupabase(): Promise<ProductItem[] | null> {
   const json = await apiJson<{ success: boolean; data: DbProducto[] }>('/api/supabase/productos');
-  if (!json?.success || !Array.isArray(json.data) || json.data.length === 0) return null;
+  if (!json?.success || !Array.isArray(json.data)) return null;
   return json.data.map(mapDbProductoToItem);
 }
 
@@ -607,7 +607,7 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
 
 export async function fetchAuditLogsFromSupabase(): Promise<AuditLog[] | null> {
   const json = await apiJson<{ success: boolean; data: any[] }>('/api/supabase/auditoria');
-  if (!json?.success || !Array.isArray(json.data) || json.data.length === 0) return null;
+  if (!json?.success || !Array.isArray(json.data)) return null;
 
   return json.data.map((r: any) => {
     const ts = r.timestamp ? new Date(r.timestamp) : new Date();

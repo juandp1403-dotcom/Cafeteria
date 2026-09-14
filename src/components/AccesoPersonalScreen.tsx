@@ -77,14 +77,15 @@ export const AccesoPersonalScreen: React.FC<AccesoPersonalScreenProps> = ({
 
       {/* Main Glass Card */}
       <div className="relative w-full max-w-xl glass-panel-elevated rounded-2xl p-6 sm:p-8 border border-white/15 shadow-2xl z-10">
-        {/* Back Button */}
+        {/* Back Button Prominent */}
         <button
           type="button"
+          id="btn-volver-registro-aprendiz"
           onClick={onBackToAprendiz}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors mb-3 cursor-pointer group"
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white transition-all mb-4 cursor-pointer group shadow-sm active:scale-95"
         >
-          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-          <span>Volver a Identificación de Aprendiz</span>
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-indigo-400" />
+          <span>Volver a Registro de Aprendiz (Kiosco)</span>
         </button>
 
         {/* Top Header */}
@@ -182,6 +183,19 @@ export const AccesoPersonalScreen: React.FC<AccesoPersonalScreenProps> = ({
             )}
           </button>
         </form>
+
+        {/* Action button to return to apprentice registration */}
+        <div className="mt-5 pt-4 border-t border-white/10">
+          <button
+            type="button"
+            id="btn-volver-registro-aprendiz-inferior"
+            onClick={onBackToAprendiz}
+            className="w-full py-2.5 px-4 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Volver a Registro de Aprendiz</span>
+          </button>
+        </div>
 
         {/* Footer info */}
         <div className="mt-5 pt-3 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400">

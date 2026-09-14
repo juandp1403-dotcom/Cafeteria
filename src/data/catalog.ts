@@ -1,5 +1,4 @@
 import { ProductItem } from '../types';
 
-// Catálogo semilla vacío: los productos se cargan desde Supabase
-// (fetchProductsFromSupabase) al montar la aplicación.
+// Catálogo inicial vacío: la aplicación carga únicamente los productos configurados en Supabase
 export const INITIAL_PRODUCTS: ProductItem[] = [];

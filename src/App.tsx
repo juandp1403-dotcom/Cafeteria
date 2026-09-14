@@ -35,39 +35,43 @@ import { InventarioScreen } from './components/InventarioScreen';
 import { UsuariosScreen } from './components/UsuariosScreen';
 import { AuditoriaScreen } from './components/AuditoriaScreen';
 import { ReceiptModal } from './components/ReceiptModal';
+import { INITIAL_PRODUCTS } from './data/catalog';
+import { INITIAL_USERS } from './data/users';
+import { INITIAL_BAJAS } from './data/bajas';
+import { INITIAL_AUDIT_LOGS } from './data/auditLogs';
 import { soundEngine } from './utils/sound';
 import { ShieldAlert, Lock, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenView>('identificacion');
-  const [role, setRole] = useState<UserRole>('Admin');
-  const [staffName, setStaffName] = useState<string>('Carlos Mendoza (Admin)');
-  const [staffEmail, setStaffEmail] = useState<string>('admin@sena.edu.co');
+  const [role, setRole] = useState<UserRole>('Cliente');
+  const [staffName, setStaffName] = useState<string>('');
+  const [staffEmail, setStaffEmail] = useState<string>('');
 
   // Master product catalog state (shared between Catalogo, Caja POS, Inventario, and Métricas)
-  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
 
   // Master user accounts state (managed in UsuariosScreen)
-  const [users, setUsers] = useState<AppUser[]>([]);
+  const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
 
   // Bajas & Mermas State (Managed in InventarioScreen, updated weekly)
-  const [bajas, setBajas] = useState<BajaItem[]>([]);
+  const [bajas, setBajas] = useState<BajaItem[]>(INITIAL_BAJAS);
 
   // Audit Logs State (Staff actions only, strictly excludes client orders)
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
 
   // Synchronize with remote catalog and records on mount
   useEffect(() => {
     // 1. Fetch live products from remote catalog
     fetchProductsFromSupabase().then((remoteProds) => {
-      if (remoteProds && remoteProds.length > 0) {
+      if (remoteProds) {
         setProducts(remoteProds);
       }
     });
 
     // 2. Fetch live bajas records
     fetchBajasFromSupabase().then((remoteBajas) => {
-      if (remoteBajas && remoteBajas.length > 0) {
+      if (remoteBajas) {
         setBajas(remoteBajas);
       }
     });
@@ -425,7 +429,13 @@ export default function App() {
         currentScreen={currentScreen}
         onSelectScreen={setCurrentScreen}
         role={role}
-        onRoleChange={setRole}
+        onRoleChange={(newRole) => {
+          setRole(newRole);
+          if (newRole === 'Cliente') {
+            setStaffName('');
+            setStaffEmail('');
+          }
+        }}
         user={user}
         staffName={staffName}
         staffEmail={staffEmail}
@@ -478,6 +488,8 @@ export default function App() {
                 onLoginSuccess={handleLoginSuccess}
                 onBackToAprendiz={() => {
                   setRole('Cliente');
+                  setStaffName('');
+                  setStaffEmail('');
                   setCurrentScreen('identificacion');
                 }}
               />

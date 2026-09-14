@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { POSOrder, ProductItem, UserRole } from '../types';
 import { fetchVentasFromSupabase, updateVentaEstadoToSupabase } from '../lib/supabase';
+import { INITIAL_POS_ORDERS, RECENT_PAID_ORDERS } from '../data/posOrders';
 import { 
   Search, 
   Wallet, 
   Check, 
   X, 
   Printer, 
-  CreditCard, 
   Banknote, 
   CheckCircle2,
   FileSpreadsheet,
@@ -32,13 +32,13 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
   userRole = 'Cajero', 
   onPrintTicket 
 }) => {
-  const [orders, setOrders] = useState<POSOrder[]>([]);
-  const [recentPaid, setRecentPaid] = useState<{ id: string; turno: string; nombre: string; hora: string; metodo: string; total: number; fecha: string }[]>([]);
+  const [orders, setOrders] = useState<POSOrder[]>(INITIAL_POS_ORDERS);
+  const [recentPaid, setRecentPaid] = useState<{ id: string; turno: string; nombre: string; hora: string; metodo: string; total: number; fecha: string }[]>(RECENT_PAID_ORDERS);
   const [recaudoManana, setRecaudoManana] = useState(0);
   const [efectivoEnCaja, setEfectivoEnCaja] = useState(0);
   const [digitalTarjeta, setDigitalTarjeta] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMethod, setSelectedMethod] = useState<'todos' | 'efectivo' | 'nequi' | 'datafono'>('todos');
+  const [selectedMethod, setSelectedMethod] = useState<'todos' | 'efectivo' | 'transferencia'>('todos');
   
   // Date period filter requested: hoy / semana / mes
   const [dateFilter, setDateFilter] = useState<'hoy' | 'semana' | 'mes'>('hoy');
@@ -163,12 +163,15 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
         ord.documento.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ord.ficha.toLowerCase().includes(searchQuery.toLowerCase());
 
-      // Payment method match
+      // Payment method match (solo efectivo y transferencia)
       const matchMethod =
         selectedMethod === 'todos' ||
         (selectedMethod === 'efectivo' && ord.metodoPago === 'Efectivo') ||
-        (selectedMethod === 'nequi' && ord.metodoPago === 'Nequi') ||
-        (selectedMethod === 'datafono' && ord.metodoPago === 'Datáfono');
+        (selectedMethod === 'transferencia' &&
+          (ord.metodoPago === 'Nequi' ||
+            ord.metodoPago === 'Bancolombia' ||
+            ord.metodoPago === 'Saldo' ||
+            ord.metodoPago === 'Transferencia'));
 
       return matchSearch && matchMethod;
     });
@@ -294,7 +297,7 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
             </span>
             <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
               <span>Efectivo: ${efectivoEnCaja.toLocaleString('es-CO')}</span>
-              <span>Digital: ${digitalTarjeta.toLocaleString('es-CO')}</span>
+              <span>Transferencia: ${digitalTarjeta.toLocaleString('es-CO')}</span>
             </div>
           </div>
         </div>
@@ -425,17 +428,21 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            {(['todos', 'efectivo', 'nequi', 'datafono'] as const).map((m) => (
+            {([
+              { id: 'todos', label: 'Todos' },
+              { id: 'efectivo', label: 'Efectivo' },
+              { id: 'transferencia', label: 'Transferencia' },
+            ] as const).map((m) => (
               <button
-                key={m}
-                onClick={() => setSelectedMethod(m)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize cursor-pointer transition-colors ${
-                  selectedMethod === m
+                key={m.id}
+                onClick={() => setSelectedMethod(m.id)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
+                  selectedMethod === m.id
                     ? 'bg-white/15 text-white'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {m}
+                {m.label}
               </button>
             ))}
           </div>
@@ -507,10 +514,17 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
 
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[#141e30] border border-white/10 text-slate-300 flex items-center gap-1.5">
-                          {ord.metodoPago === 'Efectivo' && <Banknote className="w-3.5 h-3.5 text-emerald-400" />}
-                          {ord.metodoPago === 'Nequi' && <Wallet className="w-3.5 h-3.5 text-purple-400" />}
-                          {ord.metodoPago === 'Datáfono' && <CreditCard className="w-3.5 h-3.5 text-indigo-400" />}
-                          {ord.metodoPago}
+                          {ord.metodoPago === 'Efectivo' ? (
+                            <>
+                              <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Efectivo</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wallet className="w-3.5 h-3.5 text-purple-400" />
+                              <span>Transferencia</span>
+                            </>
+                          )}
                         </span>
 
                         <span className="text-lg font-black text-[#39a900] font-display">

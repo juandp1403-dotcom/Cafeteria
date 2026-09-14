@@ -7,7 +7,6 @@ import {
   Download, 
   PlusCircle, 
   Volume2, 
-  HelpCircle, 
   Utensils, 
   Wallet,
   Sparkles,
@@ -35,7 +34,6 @@ export const MiTurnoScreen: React.FC<MiTurnoScreenProps> = ({
   onSubmitReview,
 }) => {
   const [bellRinging, setBellRinging] = useState(false);
-  const [showHelpModal, setShowHelpModal] = useState(false);
 
   // Review states
   const [calificacion, setCalificacion] = useState<number>(5);
@@ -601,63 +599,9 @@ export const MiTurnoScreen: React.FC<MiTurnoScreenProps> = ({
                 </p>
               </div>
             </div>
-
-            {/* Help / Assistance Banner */}
-            <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/20 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-300">
-                <HelpCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="text-[11px]">
-                  ¿Inconveniente con tu turno? Consulta en ventanilla rápida
-                </span>
-              </div>
-              <button
-                onClick={() => setShowHelpModal(true)}
-                className="py-1 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold cursor-pointer shrink-0"
-              >
-                Ayuda
-              </button>
-            </div>
           </div>
         </div>
       </div>
-
-      {/* Quick Help Modal */}
-      {showHelpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="glass-panel-elevated rounded-2xl max-w-md w-full p-6 border border-white/20 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <HelpCircle className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-base font-bold text-white font-display">
-                  Mesa de Ayuda CGAO
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowHelpModal(false)}
-                className="text-slate-400 hover:text-white text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Si tu orden presenta retraso o necesitas cambio de menú por intolerancia o alergia, acércate a la <strong>Ventanilla de Despacho</strong> con tu turno #{order.numeroTurno}.
-            </p>
-
-            <div className="bg-[#121929] rounded-xl p-3 text-xs space-y-1 text-slate-300">
-              <p><strong>Ubicación:</strong> Centro CGAO Vélez - Cafetería Central</p>
-              <p><strong>Horario de atención:</strong> 06:00 AM - 02:00 PM</p>
-            </div>
-
-            <button
-              onClick={() => setShowHelpModal(false)}
-              className="w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer"
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
