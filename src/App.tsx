@@ -9,10 +9,12 @@ import {
   Order, 
   OrderStatus,
   BajaItem,
-  AuditLog
+  AuditLog,
+  POSOrder
 } from './types';
 import { 
   fetchProductsFromSupabase, 
+  fetchPOSOrdersFromSupabase,
   fetchBajasFromSupabase,
   fetchUsersFromSupabase,
   fetchAuditLogsFromSupabase,
@@ -39,14 +41,21 @@ import { INITIAL_PRODUCTS } from './data/catalog';
 import { INITIAL_USERS } from './data/users';
 import { INITIAL_BAJAS } from './data/bajas';
 import { INITIAL_AUDIT_LOGS } from './data/auditLogs';
+import { INITIAL_POS_ORDERS } from './data/posOrders';
 import { soundEngine } from './utils/sound';
 import { ShieldAlert, Lock, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenView>('identificacion');
-  const [role, setRole] = useState<UserRole>('Cliente');
-  const [staffName, setStaffName] = useState<string>('');
-  const [staffEmail, setStaffEmail] = useState<string>('');
+  // Restaurar sesión guardada al cargar
+  const savedSession = (() => {
+    try { return JSON.parse(localStorage.getItem('cgao_session') || 'null'); } catch { return null; }
+  })();
+  const [currentScreen, setCurrentScreen] = useState<ScreenView>(
+    savedSession?.screen || 'identificacion'
+  );
+  const [role, setRole] = useState<UserRole>(savedSession?.role || 'Cliente');
+  const [staffName, setStaffName] = useState<string>(savedSession?.nombre || '');
+  const [staffEmail, setStaffEmail] = useState<string>(savedSession?.email || '');
 
   // Master product catalog state (shared between Catalogo, Caja POS, Inventario, and Métricas)
   const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
@@ -59,6 +68,9 @@ export default function App() {
 
   // Audit Logs State (Staff actions only, strictly excludes client orders)
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+
+  // POS Orders State (shared with Caja POS, synced across devices)
+  const [posOrders, setPosOrders] = useState<POSOrder[]>(INITIAL_POS_ORDERS);
 
   // Synchronize with remote catalog and records on mount
   useEffect(() => {
@@ -106,9 +118,16 @@ export default function App() {
       });
     }, 60000);
 
+    const pollOrders = setInterval(() => {
+      fetchPOSOrdersFromSupabase().then((remoteOrders) => {
+        if (remoteOrders) setPosOrders(remoteOrders);
+      });
+    }, 15000);
+
     return () => {
       clearInterval(pollProducts);
       clearInterval(pollUsers);
+      clearInterval(pollOrders);
     };
   }, []);
 
@@ -235,6 +254,21 @@ export default function App() {
 
   // Login handler from AccesoPersonalScreen
   const handleLoginSuccess = (newRole: UserRole, email: string, name: string) => {
+    localStorage.setItem('cgao_session', JSON.stringify({
+      role: newRole,
+      nombre: name,
+      email: email,
+      screen: (() => {
+        switch (newRole) {
+          case 'Admin': return 'inventario';
+          case 'Cajero': return 'caja_pos';
+          case 'Despachador': return 'despacho';
+          case 'Auditor': return 'metricas';
+          default: return 'catalogo';
+        }
+      })()
+    }));
+
     setRole(newRole);
     setStaffEmail(email);
     setStaffName(name);
@@ -257,6 +291,14 @@ export default function App() {
         setCurrentScreen('catalogo');
         break;
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('cgao_session');
+    setRole('Cliente');
+    setStaffName('');
+    setStaffEmail('');
+    setCurrentScreen('identificacion');
   };
 
   // Staff Audit Log Recorder (Captures staff modifications only, excludes client actions)
@@ -430,11 +472,11 @@ export default function App() {
         onSelectScreen={setCurrentScreen}
         role={role}
         onRoleChange={(newRole) => {
-          setRole(newRole);
           if (newRole === 'Cliente') {
-            setStaffName('');
-            setStaffEmail('');
+            handleLogout();
+            return;
           }
+          setRole(newRole);
         }}
         user={user}
         staffName={staffName}

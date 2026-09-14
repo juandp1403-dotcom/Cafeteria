@@ -225,6 +225,12 @@ export async function fetchProductsFromSupabase(): Promise<ProductItem[] | null>
   return json.data.map(mapDbProductoToItem);
 }
 
+export async function fetchPOSOrdersFromSupabase(): Promise<POSOrder[] | null> {
+  const json = await apiJson<{ success: boolean; data: any[] }>('/api/supabase/pedidos');
+  if (!json?.success || !Array.isArray(json.data)) return null;
+  return json.data;
+}
+
 // Persiste un producto (upsert por idproducto) vía el servidor.
 export async function saveProductToSupabase(item: ProductItem): Promise<boolean> {
   const json = await apiJson<{ success: boolean }>('/api/supabase/productos', {

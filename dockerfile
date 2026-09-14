@@ -19,12 +19,13 @@ RUN npm run build
 # Stage 2: Production runtime stage
 FROM node:22-alpine AS runner
 
-RUN apk add --no-cache dumb-init curl wget
+RUN apk add --no-cache dumb-init curl wget tzdata
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3589
+ENV TZ=America/Bogota
 
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
@@ -36,6 +37,6 @@ USER node
 EXPOSE 3589
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://127.0.0.1:3589/api/health || wget --no-verbose --tries=1 --spider http://127.0.0.1:3589/api/health || exit 1
+  CMD curl -f http://127.0.0.1:3589/api/health || exit 1
 
 CMD ["dumb-init", "node", "dist/server.cjs"]
