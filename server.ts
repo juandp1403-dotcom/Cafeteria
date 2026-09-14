@@ -486,13 +486,20 @@ app.get('/api/supabase/status', async (req, res) => {
 app.get('/api/supabase/productos', async (req, res) => {
   try {
     if (supabaseServer) {
-      const { data, error } = await supabaseServer
+      const page = parseInt(String(req.query.page || '1'), 10);
+      const limit = parseInt(String(req.query.limit || '50'), 10);
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      const { data, error, count } = await supabaseServer
         .from('producto')
-        .select('*')
-        .order('idproducto', { ascending: true });
+        .select('*', { count: 'exact' })
+        .eq('activo', true)
+        .order('nombre')
+        .range(from, to);
 
       if (!error && Array.isArray(data)) {
-        return res.json({ success: true, data });
+        return res.json({ success: true, data: data || [], total: count, page, limit });
       }
     }
 

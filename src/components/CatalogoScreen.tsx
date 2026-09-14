@@ -161,6 +161,7 @@ export const CatalogoScreen: React.FC<CatalogoScreenProps> = ({
                     <img
                       src={product.imagen}
                       alt={product.nombre}
+                      loading="lazy"
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />

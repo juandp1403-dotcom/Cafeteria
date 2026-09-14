@@ -792,6 +792,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                           <img
                             src={prod.imagen}
                             alt={prod.nombre}
+                            loading="lazy"
                             className="w-10 h-10 rounded-xl object-cover border border-white/10 shrink-0"
                           />
                           <div>
@@ -1123,6 +1124,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                     <img
                       src={selectedProductForBaja.imagen}
                       alt={selectedProductForBaja.nombre}
+                      loading="lazy"
                       className="w-9 h-9 rounded-lg object-cover border border-white/10"
                     />
                     <div>
@@ -1399,6 +1401,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                     <img
                       src={formData.imagen || assets.empanadas}
                       alt="Vista previa"
+                      loading="lazy"
                       className="w-full h-full object-cover"
                     />
                   </div>

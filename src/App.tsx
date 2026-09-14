@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   ScreenView, 
   UserRole, 
@@ -26,17 +26,17 @@ import {
 } from './lib/supabase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
-import { IdentificacionScreen } from './components/IdentificacionScreen';
-import { AccesoPersonalScreen } from './components/AccesoPersonalScreen';
-import { CatalogoScreen } from './components/CatalogoScreen';
-import { MiTurnoScreen } from './components/MiTurnoScreen';
-import { CajaPOSScreen } from './components/CajaPOSScreen';
-import { DespachoScreen } from './components/DespachoScreen';
-import { MetricasScreen } from './components/MetricasScreen';
-import { InventarioScreen } from './components/InventarioScreen';
-import { UsuariosScreen } from './components/UsuariosScreen';
-import { AuditoriaScreen } from './components/AuditoriaScreen';
-import { ReceiptModal } from './components/ReceiptModal';
+const IdentificacionScreen = lazy(() => import('./components/IdentificacionScreen').then(m => ({ default: m.IdentificacionScreen })));
+const AccesoPersonalScreen = lazy(() => import('./components/AccesoPersonalScreen').then(m => ({ default: m.AccesoPersonalScreen })));
+const CatalogoScreen = lazy(() => import('./components/CatalogoScreen').then(m => ({ default: m.CatalogoScreen })));
+const MiTurnoScreen = lazy(() => import('./components/MiTurnoScreen').then(m => ({ default: m.MiTurnoScreen })));
+const CajaPOSScreen = lazy(() => import('./components/CajaPOSScreen').then(m => ({ default: m.CajaPOSScreen })));
+const DespachoScreen = lazy(() => import('./components/DespachoScreen').then(m => ({ default: m.DespachoScreen })));
+const MetricasScreen = lazy(() => import('./components/MetricasScreen').then(m => ({ default: m.MetricasScreen })));
+const InventarioScreen = lazy(() => import('./components/InventarioScreen').then(m => ({ default: m.InventarioScreen })));
+const UsuariosScreen = lazy(() => import('./components/UsuariosScreen').then(m => ({ default: m.UsuariosScreen })));
+const AuditoriaScreen = lazy(() => import('./components/AuditoriaScreen').then(m => ({ default: m.AuditoriaScreen })));
+const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(m => ({ default: m.ReceiptModal })));
 import { INITIAL_PRODUCTS } from './data/catalog';
 import { INITIAL_USERS } from './data/users';
 import { INITIAL_BAJAS } from './data/bajas';
@@ -461,6 +461,7 @@ export default function App() {
   const hasAccess = isAuthorized(currentScreen, role);
 
   return (
+    <Suspense fallback={<div className="min-h-screen bg-[#090d16] flex items-center justify-center text-white/40 text-sm">Cargando...</div>}>
     <div className="min-h-screen bg-[#090d16] text-[#dfe2ef] flex flex-col selection:bg-[#39a900]/30 selection:text-white relative overflow-x-hidden">
       {/* Ambient background light leaks */}
       <div className="fixed top-0 left-1/4 w-[40rem] h-[40rem] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none -z-10" />
@@ -640,5 +641,6 @@ export default function App() {
         />
       )}
     </div>
+    </Suspense>
   );
 }

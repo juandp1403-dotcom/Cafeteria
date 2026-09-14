@@ -578,6 +578,7 @@ export const MiTurnoScreen: React.FC<MiTurnoScreenProps> = ({
                 <img
                   src={assets.almuerzoEjecutivo}
                   alt="Calidad Garantizada CGAO"
+                  loading="lazy"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
