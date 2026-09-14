@@ -70,6 +70,7 @@ export interface CartItem {
 }
 
 export type OrderStatus = 
+  | 'pendiente_pago'
   | 'pago_confirmado' 
   | 'en_preparacion' 
   | 'listo_recoger' 

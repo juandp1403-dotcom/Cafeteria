@@ -15,6 +15,7 @@ import {
 import { 
   fetchProductsFromSupabase, 
   fetchPOSOrdersFromSupabase,
+  fetchVentasFromSupabase,
   fetchBajasFromSupabase,
   fetchUsersFromSupabase,
   fetchAuditLogsFromSupabase,
@@ -151,6 +152,9 @@ export default function App() {
   // Active Order (created in handleConfirmOrder)
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
 
+  // ID de la venta en la BD (para hacer polling del estado real)
+  const [activeVentaId, setActiveVentaId] = useState<number | null>(null);
+
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   // Cart operations
@@ -214,8 +218,8 @@ export default function App() {
       subtotal,
       descuento,
       total,
-      estado: 'en_preparacion',
-      faseActual: 2,
+      estado: 'pendiente_pago',
+      faseActual: 1,
       tiempoEstimadoMin: 4,
       idVenta: `#VTA-${Math.floor(100000 + Math.random() * 900000)}`,
       mesaKiosko: 'Kiosko A-01',
@@ -230,6 +234,7 @@ export default function App() {
     // Persist the sale in Supabase (venta + detalleventa) and sync the VTA number
     recordVentaToSupabase(newOrder).then((idventa) => {
       if (idventa) {
+        setActiveVentaId(idventa);
         setActiveOrder((prev) =>
           prev && prev.id === newOrder.id ? { ...prev, idVenta: `#VTA-${idventa}` } : prev
         );
@@ -251,6 +256,49 @@ export default function App() {
         : prev
     );
   };
+
+  useEffect(() => {
+    if (!activeVentaId || currentScreen !== 'mi_turno') return;
+
+    const poll = setInterval(async () => {
+      const ventas = await fetchVentasFromSupabase();
+      const venta = ventas.find((v) => v.idventaDb === activeVentaId);
+      if (!venta) return;
+
+      const estadoMap: Record<string, OrderStatus> = {
+        pendiente: 'pendiente_pago',
+        cobrado: 'pago_confirmado',
+        en_preparacion: 'en_preparacion',
+        listo_recoger: 'listo_recoger',
+        entregado: 'entregado',
+      };
+      // Mapear el estado de la BD al estado del frontend
+      const dbToFrontend: Record<string, OrderStatus> = {
+        'Pendiente de Pago': 'pendiente_pago',
+        'Pagado': 'pago_confirmado',
+        'En Preparacion': 'en_preparacion',
+        'Listo para Entrega': 'listo_recoger',
+        'Entregado': 'entregado',
+      };
+      const nuevoEstado = dbToFrontend[venta.estadoDb];
+      if (!nuevoEstado) return;
+
+      setActiveOrder((prev) => {
+        if (!prev || prev.estado === nuevoEstado) return prev;
+        return {
+          ...prev,
+          estado: nuevoEstado,
+          faseActual:
+            nuevoEstado === 'pendiente_pago' ? 1 :
+            nuevoEstado === 'pago_confirmado' ? 1 :
+            nuevoEstado === 'en_preparacion' ? 2 :
+            nuevoEstado === 'listo_recoger' ? 3 : 4,
+        };
+      });
+    }, 5000);
+
+    return () => clearInterval(poll);
+  }, [activeVentaId, currentScreen]);
 
   // Login handler from AccesoPersonalScreen
   const handleLoginSuccess = (newRole: UserRole, email: string, name: string) => {

@@ -631,6 +631,7 @@ app.post('/api/supabase/auditoria', async (req, res) => {
 function mapOrderEstadoToDb(estado: string): MockVenta['estado'] {
   switch (estado) {
     case 'pago_confirmado': return 'Pagado';
+    case 'pendiente_pago': return 'Pendiente de Pago';
     case 'en_preparacion': return 'En Preparacion';
     case 'listo_recoger': return 'Listo para Entrega';
     case 'entregado': return 'Entregado';
@@ -651,10 +652,32 @@ function parseDocumentoNumero(doc: unknown): number {
   return digits ? parseInt(digits, 10) : 0;
 }
 
+async function getNextNumeroPedidoDiario(): Promise<number> {
+  if (supabaseServer) {
+    try {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { count } = await supabaseServer
+        .from('venta')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', startOfDay.toISOString());
+      return (count ?? 0) + 1;
+    } catch {
+      // fallback a mock
+    }
+  }
+  const today = new Date().toDateString();
+  const countHoy = mockVentas.filter(
+    (v) => new Date(v.created_at).toDateString() === today
+  ).length;
+  return countHoy + 1;
+}
+
 // Venta insert (+ detalleventa)
 app.post('/api/supabase/ventas', async (req, res) => {
   try {
     const body = req.body || {};
+    const numeroPedido = await getNextNumeroPedidoDiario();
 
     if (!body.venta && !body.order) {
       return res.status(400).json({ success: false, error: 'Falta el objeto venta u order.' });
@@ -686,7 +709,7 @@ app.post('/api/supabase/ventas', async (req, res) => {
         fechaventa: new Date().toISOString(),
         estado: venta.estado || 'Pendiente de Pago',
         metodo_pago: venta.metodo_pago || 'Efectivo',
-        numero_pedido_diario: (mockVentas.length % 99) + 1,
+        numero_pedido_diario: numeroPedido,
         referencia_pasarela: venta.referencia_pasarela || null,
         created_at: new Date().toISOString(),
       });
@@ -735,6 +758,7 @@ app.post('/api/supabase/ventas', async (req, res) => {
             cliente: documento,
             estado: estadoDb,
             metodo_pago: metodoDb,
+            numero_pedido_diario: numeroPedido,
             referencia_pasarela: order.codigoQR || null,
           })
           .select('idventa')
@@ -752,7 +776,7 @@ app.post('/api/supabase/ventas', async (req, res) => {
       fechaventa: new Date().toISOString(),
       estado: estadoDb,
       metodo_pago: metodoDb,
-      numero_pedido_diario: (mockVentas.length % 99) + 1,
+      numero_pedido_diario: numeroPedido,
       referencia_pasarela: order.codigoQR || null,
       created_at: new Date().toISOString(),
     });
@@ -999,7 +1023,7 @@ app.get('/api/supabase/despacho', async (req, res) => {
       const { data, error } = await supabaseServer
         .from('venta')
         .select('*, cliente:cliente(nombre, ficha), detalleventa(producto:producto(nombre))')
-        .in('estado', ['Pagado', 'En Preparacion', 'Listo para Entrega', 'Entregado'])
+        .in('estado', ['Pendiente de Pago', 'Pagado', 'En Preparacion', 'Listo para Entrega', 'Entregado'])
         .order('idventa', { ascending: false })
         .limit(40);
       if (!error && Array.isArray(data)) {
