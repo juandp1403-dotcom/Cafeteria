@@ -145,7 +145,7 @@ interface MockVenta {
   cliente: number;
   fechaventa: string;
   estado: 'Pendiente de Pago' | 'Pagado' | 'En Preparacion' | 'Listo para Entrega' | 'Entregado' | 'Cancelado';
-  metodo_pago: 'Efectivo' | 'Nequi' | 'Bancolombia' | 'Saldo';
+  metodo_pago: 'Efectivo' | 'Transferencia';
   numero_pedido_diario?: number;
   referencia_pasarela?: string | null;
   created_at: string;
@@ -640,10 +640,8 @@ function mapOrderEstadoToDb(estado: string): MockVenta['estado'] {
 
 function mapMetodoPagoToDb(metodo: string): MockVenta['metodo_pago'] {
   switch (metodo) {
-    case 'Billetera Digital SENA': return 'Saldo';
-    case 'Nequi': return 'Nequi';
+    case 'Transferencia': return 'Transferencia';
     case 'Efectivo': return 'Efectivo';
-    case 'Datáfono': return 'Bancolombia';
     default: return 'Efectivo';
   }
 }

@@ -81,7 +81,7 @@ export interface DbVenta {
   cliente: number;
   fechaventa?: string;
   estado: 'Pendiente de Pago' | 'Pagado' | 'En Preparacion' | 'Listo para Entrega' | 'Entregado' | 'Cancelado';
-  metodo_pago: 'Efectivo' | 'Nequi' | 'Bancolombia' | 'Saldo';
+  metodo_pago: 'Efectivo' | 'Transferencia';
   numero_pedido_diario?: number;
   referencia_pasarela?: string | null;
   created_at?: string;
@@ -440,9 +440,7 @@ export function mapDbVentaToPOSOrder(v: any, now?: number): POSOrder {
 
   const metodoMap: Record<string, POSOrder['metodoPago']> = {
     Efectivo: 'Efectivo',
-    Nequi: 'Nequi',
-    Bancolombia: 'Datáfono',
-    Saldo: 'Billetera Digital SENA',
+    Transferencia: 'Transferencia',
   };
 
   const estadoMap: Record<string, POSOrder['estado']> = {

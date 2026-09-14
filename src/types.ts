@@ -97,7 +97,7 @@ export interface Order {
     programa: string;
   };
   items: OrderDetailItem[];
-  metodoPago: 'Billetera Digital SENA' | 'Efectivo' | 'Nequi' | 'Datáfono';
+  metodoPago: 'Efectivo' | 'Transferencia';
   subtotal: number;
   descuento: number;
   total: number;
@@ -121,7 +121,7 @@ export interface POSOrder {
   programa: string;
   tipoUsuario?: 'Aprendiz' | 'Instructor' | 'Funcionario';
   tiempoEspera: string;
-  metodoPago: 'Efectivo' | 'Nequi' | 'Datáfono' | 'Billetera Digital SENA';
+  metodoPago: 'Efectivo' | 'Transferencia';
   items: Array<{
     cantidad: number;
     nombre: string;

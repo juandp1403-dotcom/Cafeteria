@@ -168,10 +168,7 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
         selectedMethod === 'todos' ||
         (selectedMethod === 'efectivo' && ord.metodoPago === 'Efectivo') ||
         (selectedMethod === 'transferencia' &&
-          (ord.metodoPago === 'Nequi' ||
-            ord.metodoPago === 'Bancolombia' ||
-            ord.metodoPago === 'Saldo' ||
-            ord.metodoPago === 'Transferencia'));
+          ord.metodoPago === 'Transferencia');
 
       return matchSearch && matchMethod;
     });

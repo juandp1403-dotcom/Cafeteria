@@ -22,7 +22,7 @@ interface CatalogoScreenProps {
   onAddToCart: (product: ProductItem) => void;
   onUpdateQuantity: (productId: string, delta: number) => void;
   onRemoveFromCart: (productId: string) => void;
-  onConfirmOrder: (paymentMethod: 'Billetera Digital SENA' | 'Efectivo' | 'Nequi' | 'Datáfono') => void;
+  onConfirmOrder: (paymentMethod: 'Efectivo' | 'Transferencia') => void;
 }
 
 export const CatalogoScreen: React.FC<CatalogoScreenProps> = ({
@@ -36,7 +36,7 @@ export const CatalogoScreen: React.FC<CatalogoScreenProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'nequi'>('efectivo');
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia'>('efectivo');
 
   const categories = [
     { id: 'todos', label: `Todos (${products.length})` },
@@ -65,7 +65,7 @@ export const CatalogoScreen: React.FC<CatalogoScreenProps> = ({
 
   const handleConfirm = () => {
     if (cart.length === 0) return;
-    const mappedPayment = paymentMethod === 'efectivo' ? 'Efectivo' : 'Nequi';
+    const mappedPayment = paymentMethod === 'efectivo' ? 'Efectivo' : 'Transferencia';
 
     soundEngine.playCashRegisterBeep();
     onConfirmOrder(mappedPayment);
@@ -362,20 +362,20 @@ export const CatalogoScreen: React.FC<CatalogoScreenProps> = ({
                   }`}
                 >
                   <Banknote className="w-4 h-4 text-emerald-400" />
-                  <span>Caja Efectivo</span>
+                  <span>Efectivo</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('nequi')}
+                  onClick={() => setPaymentMethod('transferencia')}
                   className={`py-2.5 px-2 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                    paymentMethod === 'nequi'
+                    paymentMethod === 'transferencia'
                       ? 'bg-sky-950/70 border-sky-500 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.3)] ring-1 ring-sky-400/40'
                       : 'bg-[#0e1626] border-white/10 text-slate-400 hover:text-slate-200 hover:bg-[#152038]'
                   }`}
                 >
                   <Wallet className="w-4 h-4 text-sky-400" />
-                  <span>Nequi / Transferencia</span>
+                  <span>Transferencia</span>
                 </button>
               </div>
             </div>

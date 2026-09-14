@@ -186,7 +186,7 @@ export default function App() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
-  const handleConfirmOrder = (paymentMethod: 'Billetera Digital SENA' | 'Efectivo' | 'Nequi' | 'Datáfono') => {
+  const handleConfirmOrder = (paymentMethod: 'Efectivo' | 'Transferencia') => {
     const subtotal = cart.reduce((acc, item) => acc + item.product.precio * item.cantidad, 0);
     const descuento = 0;
     const total = subtotal;
