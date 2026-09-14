@@ -10,7 +10,7 @@ import { scryptSync, pbkdf2Sync, timingSafeEqual } from 'crypto';
 process.env.DISABLE_HMR = 'true';
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || '3589', 10);
 
 // Security Hardening
 app.disable('x-powered-by');
@@ -45,8 +45,8 @@ if (!isConfigured) {
 
 const supabaseServer = isConfigured
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false },
-    })
+    auth: { persistSession: false },
+  })
   : null;
 
 // Security Headers Middleware (OWASP recommended)
@@ -1039,7 +1039,7 @@ app.patch('/api/supabase/ventas/:id/estado', async (req, res) => {
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { 
+      server: {
         middlewareMode: true,
         hmr: false,
         watch: null,
