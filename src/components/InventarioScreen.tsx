@@ -105,6 +105,15 @@ const CATEGORIA_DEFAULT_LABELS: Record<string, string> = {
   otros: 'Otros Insumos',
 };
 
+function buildCategoriesFromProducts(prods: ProductItem[]): { key: string; label: string }[] {
+  return prods.reduce<{ key: string; label: string }[]>((acc, p) => {
+    if (!acc.find(c => c.key === p.categoria)) {
+      acc.push({ key: p.categoria, label: p.categoriaLabel });
+    }
+    return acc;
+  }, []);
+}
+
 function mapearCategoria(val: unknown): { key: ProductItem['categoria']; label: string } {
   const raw = String((val ?? '').toString().trim());
   const normalized = normalizarEncabezado(raw);
@@ -180,9 +189,23 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('todos');
   const [filterStockStatus, setFilterStockStatus] = useState<'todos' | 'agotados' | 'alerta' | 'normal'>('todos');
+
+  const [customCategories, setCustomCategories] = useState<{ key: string; label: string }[]>([]);
+
+  const allCategories = useMemo(() => {
+    const merged = [...buildCategoriesFromProducts(products)];
+    customCategories.forEach(c => {
+      if (!merged.find(m => m.key === c.key)) merged.push(c);
+    });
+    return merged;
+  }, [products, customCategories]);
   
   // Filter for Bajas table (defaults to 'hoy' as requested)
   const [bajasFilter, setBajasFilter] = useState<string>('hoy');
+
+  // Modal state for "Añadir Categoría"
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
 
   // Modal state for Add / Edit Product
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -223,6 +246,21 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const handleAddCategory = () => {
+    const label = newCategoryLabel.trim();
+    if (!label) return;
+    const key = label
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '');
+    setCustomCategories(prev => [...prev, { key, label }]);
+    setNewCategoryLabel('');
+    setIsAddCategoryModalOpen(false);
+    showToast(`Categoría "${label}" añadida correctamente.`);
   };
 
   // KPIs
@@ -353,13 +391,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
       alertaStock: Number(formData.alertaStock) || 8,
       categoria: formData.categoria || 'comida_rapida',
       categoriaLabel:
-        formData.categoria === 'comida_rapida'
-          ? 'Comida Rápida'
-          : formData.categoria === 'bebidas_frias'
-          ? 'Bebidas Frías'
-          : formData.categoria === 'cafe_calientes'
-          ? 'Café & Calientes'
-          : 'Combos SENA',
+        allCategories.find(c => c.key === formData.categoria)?.label || formData.categoria || 'Comida Rápida',
       subcategoria: formData.subcategoria || 'General',
       imagen: formData.imagen || assets.empanadas,
       calorias: Number(formData.calorias) || 200,
@@ -736,11 +768,21 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
             className="bg-[#0c121e] border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
           >
             <option value="todos">Todas las Categorías</option>
-            <option value="comida_rapida">Comida Rápida</option>
-            <option value="bebidas_frias">Bebidas Frías</option>
-            <option value="cafe_calientes">Café & Calientes</option>
-            <option value="combos_sena">Combos SENA</option>
+            {allCategories.map(cat => (
+              <option key={cat.key} value={cat.key}>{cat.label}</option>
+            ))}
           </select>
+
+          {!isReadOnly && (
+            <button
+              onClick={() => setIsAddCategoryModalOpen(true)}
+              className="py-2 px-3 rounded-xl bg-[#0c121e] border border-white/10 hover:border-indigo-500/50 text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Crear nueva categoría de producto"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              <span>+ Categoría</span>
+            </button>
+          )}
 
           <select
             value={filterStockStatus}
@@ -1478,13 +1520,15 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                   </label>
                   <select
                     value={formData.categoria}
-                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value as any })}
+                    onChange={(e) => {
+                      const cat = allCategories.find(c => c.key === e.target.value);
+                      setFormData({ ...formData, categoria: e.target.value as any, categoriaLabel: cat?.label || e.target.value });
+                    }}
                     className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="comida_rapida">Comida Rápida</option>
-                    <option value="bebidas_frias">Bebidas Frías</option>
-                    <option value="cafe_calientes">Café & Calientes</option>
-                    <option value="combos_sena">Combos SENA</option>
+                    {allCategories.map(cat => (
+                      <option key={cat.key} value={cat.key}>{cat.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -1599,6 +1643,52 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          MODAL: AÑADIR CATEGORÍA
+          ========================================================= */}
+      {isAddCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="glass-panel-elevated bg-[#0f172a] border border-indigo-500/30 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-white/10 pb-3">
+              <div>
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">NUEVA CATEGORÍA</span>
+                <h3 className="text-lg font-bold text-white font-display mt-0.5 flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-indigo-400" />
+                  <span>Añadir Categoría</span>
+                </h3>
+              </div>
+              <button onClick={() => setIsAddCategoryModalOpen(false)} className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center text-sm cursor-pointer">✕</button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Nombre de la Categoría *
+                </label>
+                <input
+                  type="text"
+                  value={newCategoryLabel}
+                  onChange={(e) => setNewCategoryLabel(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                  placeholder="Ej: Panadería, Lácteos, Snacks..."
+                  className="w-full bg-[#0c121e] border border-white/10 rounded-xl p-2.5 text-white focus:outline-none focus:border-indigo-500"
+                  autoFocus
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  La categoría estará disponible en el inventario y en el catálogo de compras.
+                </p>
+              </div>
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
+                <button type="button" onClick={() => setIsAddCategoryModalOpen(false)} className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-semibold cursor-pointer">Cancelar</button>
+                <button type="button" onClick={handleAddCategory} disabled={!newCategoryLabel.trim()} className="py-2 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold font-display flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-40">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>Crear Categoría</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -15,6 +15,15 @@ import {
 } from 'lucide-react';
 import { soundEngine } from '../utils/sound';
 
+function buildCatalogCategories(prods: ProductItem[]): { id: string; label: string }[] {
+  return prods.reduce<{ id: string; label: string }[]>((acc, p) => {
+    if (!acc.find(c => c.id === p.categoria)) {
+      acc.push({ id: p.categoria, label: p.categoriaLabel });
+    }
+    return acc;
+  }, []);
+}
+
 interface CatalogoScreenProps {
   user: UserAprendiz;
   products: ProductItem[];
@@ -38,13 +47,9 @@ export const CatalogoScreen: React.FC<CatalogoScreenProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia'>('efectivo');
 
-  const categories = [
-    { id: 'todos', label: `Todos (${products.length})` },
-    { id: 'comida_rapida', label: 'Comida Rápida' },
-    { id: 'bebidas_frias', label: 'Bebidas Frías' },
-    { id: 'cafe_calientes', label: 'Café & Calientes' },
-    { id: 'combos_sena', label: 'Combos SENA' },
-  ];
+  const categories = useMemo(() => {
+    return [{ id: 'todos', label: `Todos (${products.length})` }, ...buildCatalogCategories(products)];
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((prod) => {
