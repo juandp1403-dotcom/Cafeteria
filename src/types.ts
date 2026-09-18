@@ -107,8 +107,6 @@ export interface Order {
   tiempoEstimadoMin?: number;
   idVenta: string;
   mesaKiosko: string;
-  codigoQR: string;
-  codigoBarras: string;
 }
 
 export interface POSOrder {

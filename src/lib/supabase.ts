@@ -330,12 +330,12 @@ function parseDocumentoNumero(doc: string): number {
 }
 
 // Inserta una venta vía el servidor (garantiza cliente, cabecera y detalle).
-export async function recordVentaToSupabase(order: Order): Promise<number | null> {
-  const json = await apiJson<{ success: boolean; idventa?: number }>('/api/supabase/ventas', {
+export async function recordVentaToSupabase(order: Order): Promise<{ idventa: number; numeroPedido: number } | null> {
+  const json = await apiJson<{ success: boolean; idventa?: number; numeroPedido?: number }>('/api/supabase/ventas', {
     method: 'POST',
     body: JSON.stringify({ order }),
   });
-  return json?.success ? (json.idventa ?? null) : null;
+  return json?.success ? { idventa: json.idventa ?? 0, numeroPedido: json.numeroPedido ?? 0 } : null;
 }
 
 // =============================================================================

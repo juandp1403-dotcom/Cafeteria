@@ -201,7 +201,7 @@ export default function App() {
 
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
-      numeroTurno: '#042',
+      numeroTurno: '#...',
       fecha: new Date().toLocaleDateString('es-CO'),
       hora: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
       timestamp: Date.now(),
@@ -227,8 +227,6 @@ export default function App() {
       tiempoEstimadoMin: 4,
       idVenta: `#VTA-${Math.floor(100000 + Math.random() * 900000)}`,
       mesaKiosko: 'Kiosko A-01',
-      codigoQR: `CGAO-${Date.now()}`,
-      codigoBarras: '9842-1042-SENA',
     };
 
     setActiveOrder(newOrder);
@@ -236,13 +234,16 @@ export default function App() {
     soundEngine.playCafeteriaBell();
     setCurrentScreen('mi_turno');
 
-    // Persist the sale in Supabase (venta + detalleventa) and sync the VTA number
-    recordVentaToSupabase(newOrder).then((idventa) => {
-      if (idventa) {
+    // Persist the sale in Supabase (venta + detalleventa) and sync the VTA number & daily turno
+    recordVentaToSupabase(newOrder).then((result) => {
+      if (result) {
+        const { idventa, numeroPedido } = result;
         setActiveVentaId(idventa);
         localStorage.setItem('cgao_active_venta', String(idventa));
         setActiveOrder((prev) =>
-          prev && prev.id === newOrder.id ? { ...prev, idVenta: `#VTA-${idventa}` } : prev
+          prev && prev.id === newOrder.id
+            ? { ...prev, idVenta: `#VTA-${idventa}`, numeroTurno: `#${String(numeroPedido).padStart(3, '0')}` }
+            : prev
         );
       }
     });

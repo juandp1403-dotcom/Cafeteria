@@ -486,26 +486,22 @@ app.get('/api/supabase/status', async (req, res) => {
 app.get('/api/supabase/productos', async (req, res) => {
   try {
     if (supabaseServer) {
-      const page = parseInt(String(req.query.page || '1'), 10);
-      const limit = parseInt(String(req.query.limit || '50'), 10);
-      const from = (page - 1) * limit;
-      const to = from + limit - 1;
-
       const { data, error, count } = await supabaseServer
         .from('producto')
         .select('*', { count: 'exact' })
         .eq('activo', true)
-        .order('nombre')
-        .range(from, to);
+        .order('idproducto', { ascending: true });
 
-      if (!error && Array.isArray(data)) {
-        return res.json({ success: true, data: data || [], total: count, page, limit });
+      if (error) {
+        console.error('[supabase/productos] Error:', error.message);
+        return res.status(502).json({ success: false, error: error.message });
       }
+      return res.json({ success: true, data: data || [], total: count });
     }
-
+    // Solo usa mock si NO hay Supabase configurado (desarrollo local sin .env)
     res.json({ success: true, data: mockProductos });
   } catch (err: any) {
-    res.json({ success: true, data: mockProductos });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -544,9 +540,12 @@ app.post('/api/supabase/productos', async (req, res) => {
       const { error } = await supabaseServer
         .from('producto')
         .upsert(item, { onConflict: 'idproducto' });
-      if (error) console.warn('[supabase/productos] Upsert error in Supabase:', error.message);
+      if (error) {
+        return res.status(502).json({ success: false, error: error.message });
+      }
+      return res.json({ success: true });
     }
-
+    // Mock solo sin Supabase
     const id = item.idproducto || (mockProductos.length ? Math.max(...mockProductos.map((p) => p.idproducto)) + 1 : 1);
     const existingIndex = mockProductos.findIndex((p) => p.idproducto === id);
     if (existingIndex >= 0) {
@@ -554,7 +553,6 @@ app.post('/api/supabase/productos', async (req, res) => {
     } else {
       mockProductos.push({ ...item, idproducto: id });
     }
-
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -574,7 +572,10 @@ app.delete('/api/supabase/productos/:id', async (req, res) => {
         .from('producto')
         .delete()
         .eq('idproducto', numericId);
-      if (error) console.warn('[supabase/productos] Delete error in Supabase:', error.message);
+      if (error) {
+        return res.status(502).json({ success: false, error: error.message });
+      }
+      return res.json({ success: true });
     }
 
     mockProductos = mockProductos.filter((p) => p.idproducto !== numericId);
@@ -591,7 +592,10 @@ app.post('/api/supabase/bajas', async (req, res) => {
       const { error } = await supabaseServer
         .from('bajainventario')
         .insert(req.body);
-      if (error) console.warn('[supabase/bajas] Insert error in Supabase:', error.message);
+      if (error) {
+        return res.status(502).json({ success: false, error: error.message });
+      }
+      return res.json({ success: true });
     }
 
     mockBajas.unshift({
@@ -653,22 +657,28 @@ function parseDocumentoNumero(doc: unknown): number {
 }
 
 async function getNextNumeroPedidoDiario(): Promise<number> {
+  // Calcula inicio del día en hora Colombia (UTC-5)
+  const nowBogota = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+  const startOfDayBogota = new Date(nowBogota);
+  startOfDayBogota.setHours(0, 0, 0, 0);
+  // Convierte de vuelta a UTC para la query
+  const offsetMs = new Date().getTime() - nowBogota.getTime();
+  const startOfDayUTC = new Date(startOfDayBogota.getTime() + offsetMs);
+
   if (supabaseServer) {
     try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
       const { count } = await supabaseServer
         .from('venta')
         .select('*', { count: 'exact', head: true })
-        .gte('created_at', startOfDay.toISOString());
+        .gte('created_at', startOfDayUTC.toISOString());
       return (count ?? 0) + 1;
     } catch {
       // fallback a mock
     }
   }
-  const today = new Date().toDateString();
+  const todayStr = startOfDayBogota.toDateString();
   const countHoy = mockVentas.filter(
-    (v) => new Date(v.created_at).toDateString() === today
+    (v) => new Date(new Date(v.created_at).toLocaleString('en-US', { timeZone: 'America/Bogota' })).toDateString() === todayStr
   ).length;
   return countHoy + 1;
 }
@@ -684,23 +694,24 @@ app.post('/api/supabase/ventas', async (req, res) => {
     }
 
     if (body.venta) {
-      const { venta, items } = body;
-      let idventa = nextIdVenta++;
+      // Contracto A: flujo desde el POS con objeto venta
+      const { venta } = body;
 
       if (supabaseServer) {
-        try {
-          const { data, error } = await supabaseServer
-            .from('venta')
-            .insert(venta)
-            .select('idventa')
-            .single();
-          if (!error && data?.idventa) {
-            idventa = data.idventa;
-          }
-        } catch (e) {
-          console.warn('[supabase/ventas] Insert error in Supabase:', e);
+        const { data, error } = await supabaseServer
+          .from('venta')
+          .insert(venta)
+          .select('idventa')
+          .single();
+        if (error) {
+          console.error('[supabase/ventas] Insert error in Supabase:', error.message);
+          return res.status(502).json({ success: false, error: error.message });
         }
+        return res.json({ success: true, idventa: data?.idventa, numeroPedido });
       }
+
+      let idventa = nextIdVenta++;
+      const items = body.items;
 
       mockVentas.unshift({
         idventa,
@@ -726,15 +737,15 @@ app.post('/api/supabase/ventas', async (req, res) => {
         }
       }
 
-      return res.json({ success: true, idventa });
+      return res.json({ success: true, idventa, numeroPedido });
     }
 
     // Contracto B: flujo desde objeto Order del Kiosco
     const order = body.order;
     const documento = parseDocumentoNumero(order?.cliente?.documento);
 
-    // Garantizar cliente
-    if (documento > 0) {
+    // Garantizar cliente (solo en modo mock, sin Supabase)
+    if (!supabaseServer && documento > 0) {
       const existing = mockClientes.find((c) => c.documento === documento);
       if (!existing) {
         mockClientes.push({
@@ -745,29 +756,30 @@ app.post('/api/supabase/ventas', async (req, res) => {
       }
     }
 
-    let idventa = nextIdVenta++;
     const estadoDb = mapOrderEstadoToDb(order.estado);
     const metodoDb = mapMetodoPagoToDb(order.metodoPago);
 
     if (supabaseServer) {
-      try {
-        const { data, error } = await supabaseServer
-          .from('venta')
-          .insert({
-            precio: order.total,
-            cliente: documento,
-            estado: estadoDb,
-            metodo_pago: metodoDb,
-            numero_pedido_diario: numeroPedido,
-            referencia_pasarela: order.codigoQR || null,
-          })
-          .select('idventa')
-          .single();
-        if (!error && data?.idventa) idventa = data.idventa;
-      } catch (e) {
-        console.warn('[supabase/ventas] Supabase insert error:', e);
+      const { data, error } = await supabaseServer
+        .from('venta')
+        .insert({
+          precio: order.total,
+          cliente: documento,
+          estado: estadoDb,
+          metodo_pago: metodoDb,
+          numero_pedido_diario: numeroPedido,
+          referencia_pasarela: null,
+        })
+        .select('idventa')
+        .single();
+      if (error) {
+        console.error('[supabase/ventas] Supabase insert error:', error.message);
+        return res.status(502).json({ success: false, error: error.message });
       }
+      return res.json({ success: true, idventa: data?.idventa, numeroPedido });
     }
+
+    let idventa = nextIdVenta++;
 
     mockVentas.unshift({
       idventa,
@@ -777,7 +789,7 @@ app.post('/api/supabase/ventas', async (req, res) => {
       estado: estadoDb,
       metodo_pago: metodoDb,
       numero_pedido_diario: numeroPedido,
-      referencia_pasarela: order.codigoQR || null,
+      referencia_pasarela: null,
       created_at: new Date().toISOString(),
     });
 
@@ -799,7 +811,7 @@ app.post('/api/supabase/ventas', async (req, res) => {
       }
     }
 
-    res.json({ success: true, idventa });
+    res.json({ success: true, idventa, numeroPedido });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

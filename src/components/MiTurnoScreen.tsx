@@ -118,7 +118,7 @@ export const MiTurnoScreen: React.FC<MiTurnoScreenProps> = ({
 
       {/* Main 2-Column Order Tracking Dashboard */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Active Order Card, Breakdown, QR & Barcode */}
+        {/* Left Column: Active Order Card & Breakdown */}
         <div className="lg:col-span-7 space-y-4">
           <div className="glass-panel-elevated rounded-2xl p-6 border border-white/15 shadow-2xl space-y-5">
             {/* Top row: Order Number (Tiempo Estimado REMOVED as requested) */}
@@ -228,70 +228,6 @@ export const MiTurnoScreen: React.FC<MiTurnoScreenProps> = ({
                   ${order.total.toLocaleString('es-CO')}{' '}
                   <span className="text-xs font-semibold text-emerald-300">COP</span>
                 </span>
-              </div>
-            </div>
-
-            {/* QR Code and Barcode Section */}
-            <div className="bg-[#0b101c] border border-white/10 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-5">
-              <div className="p-2.5 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-lg">
-                <svg viewBox="0 0 100 100" className="w-24 h-24">
-                  <rect width="100" height="100" fill="#ffffff" />
-                  <rect x="10" y="10" width="26" height="26" fill="#000000" />
-                  <rect x="14" y="14" width="18" height="18" fill="#ffffff" />
-                  <rect x="18" y="18" width="10" height="10" fill="#000000" />
-
-                  <rect x="64" y="10" width="26" height="26" fill="#000000" />
-                  <rect x="68" y="14" width="18" height="18" fill="#ffffff" />
-                  <rect x="72" y="18" width="10" height="10" fill="#000000" />
-
-                  <rect x="10" y="64" width="26" height="26" fill="#000000" />
-                  <rect x="14" y="68" width="18" height="18" fill="#ffffff" />
-                  <rect x="18" y="72" width="10" height="10" fill="#000000" />
-
-                  <rect x="42" y="12" width="6" height="6" fill="#000000" />
-                  <rect x="52" y="12" width="6" height="6" fill="#000000" />
-                  <rect x="42" y="24" width="6" height="6" fill="#000000" />
-                  <rect x="48" y="32" width="6" height="6" fill="#000000" />
-                  <rect x="42" y="44" width="18" height="18" fill="#000000" />
-                  <rect x="46" y="48" width="10" height="10" fill="#ffffff" />
-                  <rect x="68" y="42" width="8" height="8" fill="#000000" />
-                  <rect x="80" y="42" width="8" height="8" fill="#000000" />
-                  <rect x="72" y="56" width="6" height="6" fill="#000000" />
-                  <rect x="82" y="56" width="6" height="6" fill="#000000" />
-                  <rect x="42" y="70" width="8" height="8" fill="#000000" />
-                  <rect x="54" y="70" width="6" height="6" fill="#000000" />
-                  <rect x="68" y="72" width="20" height="6" fill="#000000" />
-                  <rect x="74" y="82" width="14" height="6" fill="#000000" />
-                </svg>
-              </div>
-
-              <div className="flex-1 text-center sm:text-left space-y-2">
-                <div>
-                  <span className="text-[10px] font-extrabold text-[#39a900] uppercase tracking-wider font-display">
-                    ESCANEO EN VENTANILLA DE DESPACHO
-                  </span>
-                  <p className="text-xs text-slate-300 mt-0.5 leading-snug">
-                    Presenta este código al personal del módulo de entrega cuando anuncien tu turno.
-                  </p>
-                </div>
-
-                <div className="inline-flex flex-col items-center sm:items-start pt-1">
-                  <div className="flex items-center gap-[2px] h-7 px-2 py-0.5 bg-white/90 rounded text-black">
-                    <div className="w-[3px] h-full bg-black" />
-                    <div className="w-[1px] h-full bg-black" />
-                    <div className="w-[2px] h-full bg-black" />
-                    <div className="w-[4px] h-full bg-black" />
-                    <div className="w-[1px] h-full bg-black" />
-                    <div className="w-[3px] h-full bg-black" />
-                    <div className="w-[2px] h-full bg-black" />
-                    <div className="w-[5px] h-full bg-black" />
-                    <div className="w-[1px] h-full bg-black" />
-                    <div className="w-[3px] h-full bg-black" />
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400 mt-0.5">
-                    {order.codigoBarras || '9842-1042-SENA'}
-                  </span>
-                </div>
               </div>
             </div>
 
