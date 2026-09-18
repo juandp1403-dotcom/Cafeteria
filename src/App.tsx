@@ -406,9 +406,19 @@ export default function App() {
   };
 
   // Product CRUD
-  const handleAddProduct = (newProd: ProductItem) => {
+  const handleAddProduct = async (newProd: ProductItem) => {
+    // Insertar inmediatamente con id temporal para respuesta rápida en UI
     setProducts((prev) => [newProd, ...prev]);
-    saveProductToSupabase(newProd);
+
+    const result = await saveProductToSupabase(newProd);
+
+    // Reemplazar el id temporal por el id real asignado por Supabase
+    if (result.ok && result.idproducto) {
+      const realId = `prod-${result.idproducto}`;
+      setProducts((prev) =>
+        prev.map((p) => (p.id === newProd.id ? { ...p, id: realId } : p))
+      );
+    }
 
     addStaffAuditLog(
       'Inventario',
@@ -452,9 +462,21 @@ export default function App() {
   };
 
   // Batch import products via Excel
-  const handleImportProducts = (imported: ProductItem[]) => {
+  const handleImportProducts = async (imported: ProductItem[]) => {
     setProducts((prev) => [...imported, ...prev]);
-    imported.forEach((item) => saveProductToSupabase(item));
+
+    // Guardar cada producto y actualizar su id con el real de Supabase
+    await Promise.all(
+      imported.map(async (item) => {
+        const result = await saveProductToSupabase(item);
+        if (result.ok && result.idproducto) {
+          const realId = `prod-${result.idproducto}`;
+          setProducts((prev) =>
+            prev.map((p) => (p.id === item.id ? { ...p, id: realId } : p))
+          );
+        }
+      })
+    );
 
     addStaffAuditLog(
       'Inventario',

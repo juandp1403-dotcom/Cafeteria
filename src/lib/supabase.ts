@@ -168,16 +168,23 @@ export async function checkSupabaseHealth(): Promise<SupabaseHealth> {
 // PRODUCTOS ADAPTERS (PURE)
 // =============================================================================
 
+const knownLabels: Record<string, string> = {
+  comida_rapida: 'Comida Rápida',
+  bebidas_frias: 'Bebidas Frías',
+  cafe_calientes: 'Café & Calientes',
+  combos_sena: 'Combos SENA',
+  reposteria: 'Repostería',
+  otros: 'Otros Insumos',
+};
+
+export function humanizarCategoriaKey(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function mapDbProductoToItem(db: DbProducto): ProductItem {
   const cat = (db.categoria || 'otros') as ProductItem['categoria'];
-  const catLabels: Record<string, string> = {
-    comida_rapida: 'Comida Rápida',
-    bebidas_frias: 'Bebidas Frías',
-    cafe_calientes: 'Café & Calientes',
-    combos_sena: 'Combos SENA',
-    reposteria: 'Repostería',
-    otros: 'Otros Insumos',
-  };
 
   return {
     id: `prod-${db.idproducto}`,
@@ -187,8 +194,8 @@ export function mapDbProductoToItem(db: DbProducto): ProductItem {
     costo: db.costo,
     stock: db.stock,
     alertaStock: db.stock_minimo,
-    categoria: ['comida_rapida', 'bebidas_frias', 'cafe_calientes', 'combos_sena', 'reposteria', 'otros'].includes(cat) ? cat : 'otros',
-    categoriaLabel: catLabels[cat] || 'General',
+    categoria: cat,
+    categoriaLabel: knownLabels[cat] || humanizarCategoriaKey(cat),
     subcategoria: db.subcategoria || 'General',
     imagen: db.imagen || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80',
     calorias: 250,
@@ -233,12 +240,18 @@ export async function fetchPOSOrdersFromSupabase(): Promise<POSOrder[] | null> {
 }
 
 // Persiste un producto (upsert por idproducto) vía el servidor.
-export async function saveProductToSupabase(item: ProductItem): Promise<boolean> {
-  const json = await apiJson<{ success: boolean }>('/api/supabase/productos', {
-    method: 'POST',
-    body: JSON.stringify(mapItemToDbProducto(item)),
-  });
-  return json?.success === true;
+export async function saveProductToSupabase(
+  item: ProductItem
+): Promise<{ ok: boolean; idproducto?: number }> {
+  const json = await apiJson<{ success: boolean; idproducto?: number }>(
+    '/api/supabase/productos',
+    {
+      method: 'POST',
+      body: JSON.stringify(mapItemToDbProducto(item)),
+    }
+  );
+  if (!json?.success) return { ok: false };
+  return { ok: true, idproducto: json.idproducto };
 }
 
 // Elimina un producto de Supabase por su id o por el objeto completo.

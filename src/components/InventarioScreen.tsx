@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { ProductItem, UserRole, BajaItem } from '../types';
+import { humanizarCategoriaKey } from '../lib/supabase';
 import { 
   Search, 
   Plus, 
@@ -117,8 +118,10 @@ function buildCategoriesFromProducts(prods: ProductItem[]): { key: string; label
 function mapearCategoria(val: unknown): { key: ProductItem['categoria']; label: string } {
   const raw = String((val ?? '').toString().trim());
   const normalized = normalizarEncabezado(raw);
-  const key = CATEGORIA_LABEL_A_KEY[normalized] || (CATEGORIA_KEYS_VALIDAS.includes(raw) ? (raw as ProductItem['categoria']) : 'comida_rapida');
-  return { key, label: CATEGORIA_DEFAULT_LABELS[key] || 'Comida Rápida' };
+  const key = CATEGORIA_LABEL_A_KEY[normalized]
+    || (raw as ProductItem['categoria'])
+    || 'otros';
+  return { key, label: CATEGORIA_DEFAULT_LABELS[key] || humanizarCategoriaKey(key) };
 }
 
 function numeroEntero(val: unknown, fallback: number): number {

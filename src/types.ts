@@ -51,7 +51,7 @@ export interface ProductItem {
   id: string;
   nombre: string;
   descripcion: string;
-  categoria: 'comida_rapida' | 'bebidas_frias' | 'cafe_calientes' | 'combos_sena' | 'reposteria' | 'otros';
+  categoria: 'comida_rapida' | 'bebidas_frias' | 'cafe_calientes' | 'combos_sena' | 'reposteria' | 'otros' | (string & {});
   categoriaLabel: string;
   subcategoria: string;
   precio: number;

@@ -536,6 +536,8 @@ app.get('/api/supabase/bajas', async (req, res) => {
 app.post('/api/supabase/productos', async (req, res) => {
   try {
     const item = req.body;
+    let finalId: number | undefined;
+
     if (supabaseServer) {
       const { data: upsertData, error } = await supabaseServer
         .from('producto')
@@ -543,20 +545,25 @@ app.post('/api/supabase/productos', async (req, res) => {
         .select('idproducto')
         .single();
       if (error) {
-        console.warn('[supabase/productos] Upsert error in Supabase:', error.message);
+        console.warn('[supabase/productos] Upsert error:', error.message);
       } else if (upsertData?.idproducto) {
-        item.idproducto = upsertData.idproducto; // sincronizar id real
+        finalId = upsertData.idproducto;
+        item.idproducto = finalId;
       }
     }
-    // Mock solo sin Supabase
-    const id = item.idproducto || (mockProductos.length ? Math.max(...mockProductos.map((p) => p.idproducto)) + 1 : 1);
-    const existingIndex = mockProductos.findIndex((p) => p.idproducto === id);
+
+    const mockId = item.idproducto ||
+      (mockProductos.length ? Math.max(...mockProductos.map((p) => p.idproducto)) + 1 : 1);
+    if (!finalId) finalId = mockId;
+
+    const existingIndex = mockProductos.findIndex((p) => p.idproducto === mockId);
     if (existingIndex >= 0) {
-      mockProductos[existingIndex] = { ...mockProductos[existingIndex], ...item, idproducto: id };
+      mockProductos[existingIndex] = { ...mockProductos[existingIndex], ...item, idproducto: mockId };
     } else {
-      mockProductos.push({ ...item, idproducto: id });
+      mockProductos.push({ ...item, idproducto: mockId });
     }
-    res.json({ success: true });
+
+    res.json({ success: true, idproducto: finalId });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
