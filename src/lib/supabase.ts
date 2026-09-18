@@ -199,8 +199,9 @@ export function mapDbProductoToItem(db: DbProducto): ProductItem {
 
 export function mapItemToDbProducto(item: ProductItem): Partial<DbProducto> {
   const numericId = parseInt(item.id.replace('prod-', ''), 10);
+  const isValidDbId = !isNaN(numericId) && numericId <= 2147483647;
   return {
-    ...(isNaN(numericId) ? {} : { idproducto: numericId }),
+    ...(isValidDbId ? { idproducto: numericId } : {}),
     nombre: item.nombre,
     precio: item.precio,
     costo: item.costo,

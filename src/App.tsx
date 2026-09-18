@@ -194,14 +194,24 @@ export default function App() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
-  const handleConfirmOrder = (paymentMethod: 'Efectivo' | 'Transferencia') => {
+  const handleConfirmOrder = async (paymentMethod: 'Efectivo' | 'Transferencia') => {
     const subtotal = cart.reduce((acc, item) => acc + item.product.precio * item.cantidad, 0);
     const descuento = 0;
     const total = subtotal;
 
+    // Obtener el próximo número de turno del día desde el servidor
+    let turnoNum = 1;
+    try {
+      const res = await fetch('/api/supabase/ventas/turno-actual');
+      const json = await res.json();
+      if (json?.success && typeof json.numero === 'number') {
+        turnoNum = json.numero;
+      }
+    } catch { /* usa 1 como fallback */ }
+
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
-      numeroTurno: '#...',
+      numeroTurno: `#${String(turnoNum).padStart(3, '0')}`,
       fecha: new Date().toLocaleDateString('es-CO'),
       hora: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
       timestamp: Date.now(),

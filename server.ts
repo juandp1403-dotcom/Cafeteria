@@ -537,13 +537,16 @@ app.post('/api/supabase/productos', async (req, res) => {
   try {
     const item = req.body;
     if (supabaseServer) {
-      const { error } = await supabaseServer
+      const { data: upsertData, error } = await supabaseServer
         .from('producto')
-        .upsert(item, { onConflict: 'idproducto' });
+        .upsert(item, { onConflict: 'idproducto' })
+        .select('idproducto')
+        .single();
       if (error) {
-        return res.status(502).json({ success: false, error: error.message });
+        console.warn('[supabase/productos] Upsert error in Supabase:', error.message);
+      } else if (upsertData?.idproducto) {
+        item.idproducto = upsertData.idproducto; // sincronizar id real
       }
-      return res.json({ success: true });
     }
     // Mock solo sin Supabase
     const id = item.idproducto || (mockProductos.length ? Math.max(...mockProductos.map((p) => p.idproducto)) + 1 : 1);
@@ -657,29 +660,43 @@ function parseDocumentoNumero(doc: unknown): number {
 }
 
 async function getNextNumeroPedidoDiario(): Promise<number> {
-  // Calcula inicio del día en hora Colombia (UTC-5)
-  const nowBogota = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));
-  const startOfDayBogota = new Date(nowBogota);
+  // Inicio del día en Colombia (UTC-5): medianoche bogotana = 05:00 UTC
+  const now = new Date();
+  const bogotaOffset = -5 * 60; // minutos
+  const localOffset = now.getTimezoneOffset(); // minutos (negativo si UTC+)
+  const diff = (localOffset - bogotaOffset) * 60 * 1000;
+  const bogotaNow = new Date(now.getTime() - diff);
+
+  const startOfDayBogota = new Date(bogotaNow);
   startOfDayBogota.setHours(0, 0, 0, 0);
-  // Convierte de vuelta a UTC para la query
-  const offsetMs = new Date().getTime() - nowBogota.getTime();
-  const startOfDayUTC = new Date(startOfDayBogota.getTime() + offsetMs);
+
+  // Convertir de vuelta a UTC para la query
+  const startOfDayUTC = new Date(startOfDayBogota.getTime() + diff);
 
   if (supabaseServer) {
     try {
-      const { count } = await supabaseServer
+      const { data, error } = await supabaseServer
         .from('venta')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', startOfDayUTC.toISOString());
-      return (count ?? 0) + 1;
+        .select('numero_pedido_diario')
+        .gte('created_at', startOfDayUTC.toISOString())
+        .order('numero_pedido_diario', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!error) {
+        return (data?.numero_pedido_diario ?? 0) + 1;
+      }
     } catch {
       // fallback a mock
     }
   }
-  const todayStr = startOfDayBogota.toDateString();
-  const countHoy = mockVentas.filter(
-    (v) => new Date(new Date(v.created_at).toLocaleString('en-US', { timeZone: 'America/Bogota' })).toDateString() === todayStr
-  ).length;
+
+  // Fallback en memoria
+  const todayStr = bogotaNow.toDateString();
+  const countHoy = mockVentas.filter((v) => {
+    const diff2 = (new Date(v.created_at).getTimezoneOffset() - bogotaOffset) * 60 * 1000;
+    const vBogota = new Date(new Date(v.created_at).getTime() - diff2);
+    return vBogota.toDateString() === todayStr;
+  }).length;
   return countHoy + 1;
 }
 
@@ -812,6 +829,16 @@ app.post('/api/supabase/ventas', async (req, res) => {
     }
 
     res.json({ success: true, idventa, numeroPedido });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Siguiente numero de turno del día (sin insertar venta)
+app.get('/api/supabase/ventas/turno-actual', async (req, res) => {
+  try {
+    const numero = await getNextNumeroPedidoDiario();
+    res.json({ success: true, numero });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
