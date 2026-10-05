@@ -10,7 +10,6 @@ export const INITIAL_USERS: AppUser[] = [
     rol: 'Admin',
     programa: 'Administración Cafetería CGAO',
     jornada: 'Jornada Completa',
-    saldoMonedero: 0,
     subsidioActivo: false,
     activo: true,
     ultimoAcceso: 'Pendiente',

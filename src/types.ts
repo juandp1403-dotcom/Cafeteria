@@ -41,7 +41,6 @@ export interface AppUser {
   programa?: string;
   jornada?: string;
   turnoAlmuerzo?: string;
-  saldoMonedero: number;
   subsidioActivo: boolean;
   activo: boolean;
   ultimoAcceso?: string;

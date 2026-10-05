@@ -515,7 +515,7 @@ export default function App() {
     addStaffAuditLog(
       'Usuarios',
       'Modificación de Datos de Usuario',
-      `Actualización de perfil / saldo de "${updated.nombre}" (${updated.documento}). Saldo monedero: $${updated.saldoMonedero.toLocaleString('es-CO')} COP.`,
+      `Actualización de perfil del usuario "${updated.nombre}" (${updated.documento}) con rol ${updated.rol}.`,
       'edicion'
     );
   };

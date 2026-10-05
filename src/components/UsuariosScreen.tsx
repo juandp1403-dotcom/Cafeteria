@@ -54,7 +54,6 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
     programa: '',
     jornada: 'Jornada Diurna 06:00 - 13:00',
     turnoAlmuerzo: 'Bloque B – 12:15',
-    saldoMonedero: 0,
     subsidioActivo: false,
     activo: true,
   });
@@ -97,11 +96,10 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
       nombre: '',
       email: '',
       rol: 'Cliente',
-      ficha: '',
-      programa: '',
-      jornada: '',
-      turnoAlmuerzo: '',
-      saldoMonedero: 0,
+      ficha: '2671234',
+      programa: 'ADSO CGAO',
+      jornada: 'Jornada Diurna 06:00 - 13:00',
+      turnoAlmuerzo: 'Bloque B – 12:15',
       subsidioActivo: false,
       activo: true,
       ultimoAcceso: 'Nunca',
@@ -130,13 +128,12 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
       nombre: formData.nombre?.trim() || '',
       email: formData.email?.trim() || `${formData.documento?.trim()}@sena.edu.co`,
       rol: (formData.rol as UserRole) || 'Cliente',
-      ficha: formData.rol === 'Cliente' ? (formData.ficha?.trim() || '') : '',
-      programa: editingUser?.programa || '',
-      jornada: editingUser?.jornada || 'Jornada Diurna',
-      turnoAlmuerzo: editingUser?.turnoAlmuerzo || 'Bloque B – 12:15',
-      saldoMonedero: editingUser ? (editingUser.saldoMonedero || 0) : 0,
-      subsidioActivo: !!editingUser?.subsidioActivo,
-      activo: editingUser ? editingUser.activo : true,
+      ficha: formData.ficha?.trim() || '',
+      programa: formData.programa?.trim() || '',
+      jornada: formData.jornada || 'Jornada Diurna',
+      turnoAlmuerzo: formData.turnoAlmuerzo || 'Bloque B – 12:15',
+      subsidioActivo: !!formData.subsidioActivo,
+      activo: formData.activo !== undefined ? formData.activo : true,
       ultimoAcceso: editingUser?.ultimoAcceso || 'Hoy',
     };
 
@@ -226,7 +223,7 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
             Gestión de Usuarios & Roles
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-            Administración centralizada de credenciales, asignación de permisos por rol (RBAC), monedero institucional y estado de cuentas.
+            Administración centralizada de credenciales, asignación de permisos por rol (RBAC) y estado de cuentas.
           </p>
         </div>
 
@@ -336,7 +333,6 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 <th className="py-3 px-3">Documento</th>
                 <th className="py-3 px-3 text-center">Rol Asignado</th>
                 <th className="py-3 px-3">Programa / Dependencia</th>
-                <th className="py-3 px-3 text-right">Saldo Monedero</th>
                 <th className="py-3 px-3 text-center">Estado</th>
                 {!isReadOnly && <th className="py-3 px-4 text-right">Acciones</th>}
               </tr>
@@ -381,11 +377,6 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                         Ficha {u.ficha}
                       </span>
                     )}
-                  </td>
-
-                  {/* Monedero */}
-                  <td className="py-3 px-3 text-right font-mono font-bold text-white">
-                    ${(u.saldoMonedero || 0).toLocaleString('es-CO')}
                   </td>
 
                   {/* Active Status */}
@@ -476,21 +467,6 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 </select>
               </div>
 
-              {/* Documento */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Documento *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.documento}
-                  onChange={(e) => setFormData({ ...formData, documento: e.target.value })}
-                  placeholder="Ej: 1098765432"
-                  className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
-                />
-              </div>
-
               {/* Nombre Completo */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
@@ -506,14 +482,46 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 />
               </div>
 
+              {/* Tipo Doc & Documento */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Tipo de Documento
+                  </label>
+                  <select
+                    value={formData.tipoDoc}
+                    onChange={(e) => setFormData({ ...formData, tipoDoc: e.target.value })}
+                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="C.C. Cédula">C.C. Cédula</option>
+                    <option value="T.I. Tarjeta Identidad">T.I. Tarjeta Identidad</option>
+                    <option value="P.E.P.">P.E.P.</option>
+                    <option value="C.E. Extranjería">C.E. Extranjería</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Número de Documento *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.documento}
+                    onChange={(e) => setFormData({ ...formData, documento: e.target.value })}
+                    placeholder="1098..."
+                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
               {/* Email */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Email / Correo Institucional *
+                  Correo Institucional (@sena.edu.co / @soy.sena.edu.co)
                 </label>
                 <input
                   type="email"
-                  required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="usuario@sena.edu.co"
@@ -521,21 +529,49 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 />
               </div>
 
-              {/* Ficha SENA (Si aplica a cliente) */}
-              {(formData.rol === 'Cliente' || !formData.rol) && (
+              {/* Ficha & Programa */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                    Ficha SENA (Si aplica a cliente)
+                    Ficha SENA (Si aplica)
                   </label>
                   <input
                     type="text"
-                    value={formData.ficha || ''}
+                    value={formData.ficha}
                     onChange={(e) => setFormData({ ...formData, ficha: e.target.value })}
-                    placeholder="Ej: 2671234"
+                    placeholder="2671234"
                     className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
                   />
                 </div>
-              )}
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Programa / Área
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.programa}
+                    onChange={(e) => setFormData({ ...formData, programa: e.target.value })}
+                    placeholder="ADSO, Cocina..."
+                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Activo / Inactivo */}
+              <div>
+                <label className="flex items-center gap-2 p-2 rounded-lg bg-[#0c121e] border border-white/10 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.activo}
+                    onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
+                    className="rounded accent-indigo-500"
+                  />
+                  <span className="text-[11px] font-semibold text-slate-300">
+                    Cuenta activa y habilitada para operar en Cafetería CGAO
+                  </span>
+                </label>
+              </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-white/10">
                 <button
