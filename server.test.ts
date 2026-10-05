@@ -108,3 +108,51 @@ describe('POST /api/supabase/productos — producto nuevo sin idproducto', () =>
     expect(created.idproducto).toBeLessThanOrEqual(2147483647);
   });
 });
+
+describe('POST /api/supabase/usuarios — gestión y persistencia de usuarios', () => {
+  it('registra correctamente un cliente con documento, nombre y ficha', async () => {
+    const res = await request(BASE_URL)
+      .post('/api/supabase/usuarios')
+      .send({
+        user: {
+          documento: '1098765001',
+          nombre: 'Aprendiz Prueba',
+          email: 'aprendiz@sena.edu.co',
+          rol: 'Cliente',
+          ficha: '2671234',
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('registra correctamente un usuario con rol operativo (personal)', async () => {
+    const res = await request(BASE_URL)
+      .post('/api/supabase/usuarios')
+      .send({
+        user: {
+          documento: '1098765002',
+          nombre: 'Cajero Prueba',
+          email: 'cajero.test@sena.edu.co',
+          rol: 'Cajero',
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('registra correctamente un usuario admin', async () => {
+    const res = await request(BASE_URL)
+      .post('/api/supabase/usuarios')
+      .send({
+        user: {
+          documento: '1098765003',
+          nombre: 'Admin Prueba',
+          email: 'admin.test@sena.edu.co',
+          rol: 'Admin',
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});

@@ -885,53 +885,169 @@ app.get('/api/supabase/usuarios', async (req, res) => {
 // Upsert de usuario/cliente
 app.post('/api/supabase/usuarios', async (req, res) => {
   try {
-    const { user } = req.body || {};
+    const { user, authUserId } = req.body || {};
     if (!user) return res.status(400).json({ success: false, error: 'Falta el usuario.' });
 
     const doc = parseDocumentoNumero(user.documento);
     if (!doc) return res.status(400).json({ success: false, error: 'Documento inválido.' });
 
-    if (user.rol === 'Cliente') {
+    const rolMap: Record<string, 'admin' | 'cajero' | 'despachador' | 'auditor' | 'cliente'> = {
+      admin: 'admin',
+      Admin: 'admin',
+      cajero: 'cajero',
+      Cajero: 'cajero',
+      despachador: 'despachador',
+      Despachador: 'despachador',
+      auditor: 'auditor',
+      Auditor: 'auditor',
+      cliente: 'cliente',
+      Cliente: 'cliente',
+    };
+    const dbRol = rolMap[user.rol] || 'cliente';
+
+    const fichaNum = user.ficha ? (parseDocumentoNumero(user.ficha) || null) : null;
+    const tempPassword = String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`;
+    const userEmail = user.email || `${doc}@sena.edu.co`;
+
+    let assignedId = authUserId || null;
+
+    if (supabaseServer) {
+      try {
+        // En llamadas a supabase.auth.signUp() pasamos metadata requerida
+        const { data: authData, error: authErr } = await supabaseServer.auth.signUp({
+          email: userEmail,
+          password: tempPassword,
+          options: {
+            data: {
+              nombre: user.nombre,
+              rol: dbRol,
+              documento: doc,
+              ficha: fichaNum,
+            },
+          },
+        });
+
+        if (authData?.user?.id) {
+          assignedId = authData.user.id;
+          // Autoconfirmar usuario para evitar requerir verificación por correo desde administración
+          await supabaseServer.auth.admin.updateUserById(assignedId, {
+            email_confirm: true,
+          }).catch((err) => {
+            console.warn('[Supabase Server] Error al autoconfirmar usuario:', err?.message || err);
+          });
+        }
+
+        // Si ya existía el usuario en Auth y no obtuvimos ID de signUp, buscar en profiles o auth
+        if (!assignedId) {
+          const { data: existingProfile } = await supabaseServer
+            .from('profiles')
+            .select('id')
+            .eq('documento', doc)
+            .maybeSingle();
+          if (existingProfile?.id) {
+            assignedId = existingProfile.id;
+          }
+        }
+
+        // Inserción / Upsert en profiles con el ID asignado por Supabase (si está disponible)
+        if (assignedId) {
+          await supabaseServer.from('profiles').upsert({
+            id: assignedId,
+            documento: doc,
+            nombre: user.nombre,
+            email: userEmail,
+            rol: dbRol,
+            ficha: fichaNum,
+            activo: user.activo !== false,
+          }, { onConflict: 'id' });
+        }
+
+        // Inserción / Upsert en la tabla correspondiente al rol seleccionado (admin, personal, cliente)
+        if (dbRol === 'cliente') {
+          await supabaseServer.from('cliente').upsert({
+            documento: doc,
+            nombre: user.nombre,
+            ficha: fichaNum || 0,
+          }, { onConflict: 'documento' });
+        } else if (dbRol === 'admin') {
+          const hashedPass = await bcrypt.hash(tempPassword, 10);
+          await supabaseServer.from('admin').upsert({
+            documento: doc,
+            nombre: user.nombre,
+            clave: hashedPass,
+            email: userEmail,
+            rol: 'admin',
+            activo: user.activo !== false,
+          }, { onConflict: 'documento' });
+        } else if (['cajero', 'despachador', 'auditor'].includes(dbRol)) {
+          const hashedPass = await bcrypt.hash(tempPassword, 10);
+          await supabaseServer.from('personal').upsert({
+            docpersonal: doc,
+            nombre: user.nombre,
+            clave: hashedPass,
+            email: userEmail,
+            rol: dbRol,
+            activo: user.activo !== false,
+          }, { onConflict: 'docpersonal' });
+        }
+      } catch (sbErr: any) {
+        console.error('[Supabase Server] Error en persistencia Supabase:', sbErr?.message || sbErr);
+      }
+    }
+
+    // Sincronizar también el store en memoria para pruebas y modo offline
+    if (dbRol === 'cliente') {
       const existing = mockClientes.find((c) => c.documento === doc);
       if (existing) {
         existing.nombre = user.nombre;
-        existing.ficha = parseDocumentoNumero(user.ficha || '') || 0;
+        existing.ficha = fichaNum || 0;
       } else {
         mockClientes.push({
           documento: doc,
           nombre: user.nombre,
-          ficha: parseDocumentoNumero(user.ficha || '') || 0,
+          ficha: fichaNum || 0,
         });
       }
-      return res.json({ success: true });
+      return res.json({ success: true, id: assignedId });
     }
 
-    const rolMap: Record<string, 'cajero' | 'despachador' | 'auditor'> = {
-      Cajero: 'cajero',
-      Despachador: 'despachador',
-      Auditor: 'auditor',
-    };
-    const dbRol = rolMap[user.rol];
-    if (!dbRol) return res.status(400).json({ success: false, error: 'Rol no reconocido.' });
+    if (dbRol === 'admin') {
+      const existing = mockAdmins.find((a) => a.documento === doc);
+      if (existing) {
+        existing.nombre = user.nombre;
+        existing.email = userEmail;
+        existing.activo = user.activo !== false;
+      } else {
+        mockAdmins.push({
+          documento: doc,
+          nombre: user.nombre,
+          email: userEmail,
+          clave: tempPassword,
+          rol: 'admin',
+          activo: user.activo !== false,
+        });
+      }
+      return res.json({ success: true, id: assignedId });
+    }
 
     const existingPersonal = mockPersonal.find((p) => p.docpersonal === doc);
     if (existingPersonal) {
       existingPersonal.nombre = user.nombre;
-      existingPersonal.email = user.email || existingPersonal.email;
-      existingPersonal.rol = dbRol;
+      existingPersonal.email = userEmail;
+      existingPersonal.rol = dbRol as any;
       existingPersonal.activo = user.activo !== false;
     } else {
       mockPersonal.push({
         docpersonal: doc,
         nombre: user.nombre,
-        email: user.email || `${dbRol}@sena.edu.co`,
-        clave: '123456',
-        rol: dbRol,
+        email: userEmail,
+        clave: tempPassword,
+        rol: dbRol as any,
         activo: user.activo !== false,
       });
     }
 
-    res.json({ success: true });
+    res.json({ success: true, id: assignedId });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

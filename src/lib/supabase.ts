@@ -1,7 +1,34 @@
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProductItem, BajaItem, AuditLog, AppUser, Order, POSOrder } from '../types';
 
+const SUPABASE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && (process.env?.SUPABASE_URL || process.env?.VITE_SUPABASE_URL)) ||
+  'https://avwoaoxbxgbgvgqgvizo.supabase.co';
+
+const SUPABASE_ANON_KEY =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
+  (typeof process !== 'undefined' && (process.env?.SUPABASE_SERVICE_ROLE_KEY || process.env?.SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) ||
+  'sb_publishable_jyF6iE-KjmN5S0sPAlMVmg_hiZeb50Z';
+
+export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: typeof window !== 'undefined',
+    autoRefreshToken: true,
+  },
+});
+
+export function toDbRol(rol?: string): 'admin' | 'cajero' | 'despachador' | 'auditor' | 'cliente' {
+  const r = (rol || '').toLowerCase().trim();
+  if (r === 'admin') return 'admin';
+  if (r === 'cajero') return 'cajero';
+  if (r === 'despachador') return 'despachador';
+  if (r === 'auditor') return 'auditor';
+  return 'cliente';
+}
+
 // =============================================================================
-// ACCESO A DATOS 100% A TRAVÉS DEL SERVIDOR (server.ts)
+// ACCESO A DATOS (Híbrido: Supabase Auth/Client + Servidor Express API)
 // =============================================================================
 // El navegador ya NO usa un cliente Supabase directo: todas las lecturas y
 // escrituras pasan por el API Express, que internamente usa la SERVICE ROLE
@@ -70,6 +97,18 @@ export interface DbAdmin {
   clave?: string;
   email: string;
   rol: 'admin' | 'superadmin';
+  activo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DbProfile {
+  id: string; // UUID referencias auth.users(id)
+  documento: number | null;
+  nombre: string;
+  email: string;
+  rol: 'admin' | 'cajero' | 'despachador' | 'auditor' | 'cliente';
+  ficha: number | null;
   activo: boolean;
   created_at?: string;
   updated_at?: string;
@@ -597,6 +636,7 @@ export async function fetchTicketsDespachoFromSupabase(): Promise<TicketDespacho
 export interface SaveUsuarioResult {
   ok: boolean;
   reason?: string;
+  userId?: string;
 }
 
 export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioResult> {
@@ -604,14 +644,87 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
     const doc = parseDocumentoNumero(user.documento);
     if (!doc) return { ok: false, reason: 'El documento ingresado no es válido.' };
 
+    const dbRol = toDbRol(user.rol);
+    const fichaNum = user.ficha ? (parseDocumentoNumero(user.ficha) || null) : null;
+    const tempPassword = String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`;
+    const userEmail = user.email?.trim() || `${doc}@sena.edu.co`;
+
+    let authUserId: string | null = null;
+
+    // 1. Confirmación y Persistencia de Usuarios en Supabase Auth
+    if (supabase) {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: userEmail,
+          password: tempPassword,
+          options: {
+            data: {
+              nombre: user.nombre,
+              rol: dbRol,
+              documento: doc,
+              ficha: fichaNum,
+            },
+            emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+          },
+        });
+
+        if (authData?.user?.id) {
+          authUserId = authData.user.id;
+
+          // Inserción / Upsert en profiles con el ID asignado por Supabase
+          await supabase.from('profiles').upsert({
+            id: authUserId,
+            documento: doc,
+            nombre: user.nombre,
+            email: userEmail,
+            rol: dbRol,
+            ficha: fichaNum,
+            activo: user.activo !== false,
+          }, { onConflict: 'id' });
+
+          // Inserción / Upsert en la tabla correspondiente al rol seleccionado
+          if (dbRol === 'cliente') {
+            await supabase.from('cliente').upsert({
+              documento: doc,
+              nombre: user.nombre,
+              ficha: fichaNum || 0,
+            }, { onConflict: 'documento' });
+          } else if (dbRol === 'admin') {
+            await supabase.from('admin').upsert({
+              documento: doc,
+              nombre: user.nombre,
+              clave: tempPassword,
+              email: userEmail,
+              rol: 'admin',
+              activo: user.activo !== false,
+            }, { onConflict: 'documento' });
+          } else if (['cajero', 'despachador', 'auditor'].includes(dbRol)) {
+            await supabase.from('personal').upsert({
+              docpersonal: doc,
+              nombre: user.nombre,
+              clave: tempPassword,
+              email: userEmail,
+              rol: dbRol,
+              activo: user.activo !== false,
+            }, { onConflict: 'docpersonal' });
+          }
+        } else if (authError) {
+          console.warn('[Supabase Auth Client] signUp aviso:', authError.message);
+        }
+      } catch (authEx: any) {
+        console.warn('[Supabase Auth Client] Error al ejecutar signUp:', authEx?.message || authEx);
+      }
+    }
+
+    // 2. Persistir además en el servidor Express (Service Role para autoconfirmar sin email y actualizar tablas)
     const res = await fetch('/api/supabase/usuarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user }),
+      body: JSON.stringify({ user: { ...user, email: userEmail }, authUserId }),
     });
     const json = await res.json().catch(() => ({ success: false, error: 'Respuesta inválida del servidor.' }));
 
-    if (json.success) return { ok: true };
+    if (json.success) return { ok: true, userId: authUserId || json.id || undefined };
     return { ok: false, reason: json.error || 'No se pudo guardar el usuario en Supabase.' };
   } catch (err: any) {
     console.error('[Supabase] Error al guardar usuario:', err?.message || err);

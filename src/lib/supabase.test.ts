@@ -42,3 +42,16 @@ describe('mapItemToDbProducto', () => {
     expect(result.idproducto).toBeUndefined();
   });
 });
+
+describe('toDbRol', () => {
+  it('mapea roles correctamente a nombres válidos del esquema', async () => {
+    const { toDbRol } = await import('./supabase');
+    expect(toDbRol('Admin')).toBe('admin');
+    expect(toDbRol('Cajero')).toBe('cajero');
+    expect(toDbRol('Despachador')).toBe('despachador');
+    expect(toDbRol('Auditor')).toBe('auditor');
+    expect(toDbRol('Cliente')).toBe('cliente');
+    expect(toDbRol('otro')).toBe('cliente');
+    expect(toDbRol()).toBe('cliente');
+  });
+});

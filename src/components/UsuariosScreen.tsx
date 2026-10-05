@@ -18,7 +18,6 @@ import {
   User,
   X,
   Save,
-  Wallet,
   Sparkles,
   ShieldAlert
 } from 'lucide-react';
@@ -98,11 +97,11 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
       nombre: '',
       email: '',
       rol: 'Cliente',
-      ficha: '2671234',
-      programa: 'ADSO CGAO',
-      jornada: 'Jornada Diurna 06:00 - 13:00',
-      turnoAlmuerzo: 'Bloque B – 12:15',
-      saldoMonedero: 25000,
+      ficha: '',
+      programa: '',
+      jornada: '',
+      turnoAlmuerzo: '',
+      saldoMonedero: 0,
       subsidioActivo: false,
       activo: true,
       ultimoAcceso: 'Nunca',
@@ -126,18 +125,18 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
 
     const userToSave: AppUser = {
       id: editingUser ? editingUser.id : formData.id || `usr-${Date.now()}`,
-      documento: formData.documento || '',
+      documento: formData.documento?.trim() || '',
       tipoDoc: formData.tipoDoc || 'C.C. Cédula',
-      nombre: formData.nombre || '',
-      email: formData.email || `${formData.documento}@sena.edu.co`,
+      nombre: formData.nombre?.trim() || '',
+      email: formData.email?.trim() || `${formData.documento?.trim()}@sena.edu.co`,
       rol: (formData.rol as UserRole) || 'Cliente',
-      ficha: formData.ficha || '',
-      programa: formData.programa || '',
-      jornada: formData.jornada || 'Jornada Diurna',
-      turnoAlmuerzo: formData.turnoAlmuerzo || 'Bloque B – 12:15',
-      saldoMonedero: Number(formData.saldoMonedero) || 0,
-      subsidioActivo: !!formData.subsidioActivo,
-      activo: formData.activo !== undefined ? formData.activo : true,
+      ficha: formData.rol === 'Cliente' ? (formData.ficha?.trim() || '') : '',
+      programa: editingUser?.programa || '',
+      jornada: editingUser?.jornada || 'Jornada Diurna',
+      turnoAlmuerzo: editingUser?.turnoAlmuerzo || 'Bloque B – 12:15',
+      saldoMonedero: editingUser ? (editingUser.saldoMonedero || 0) : 0,
+      subsidioActivo: !!editingUser?.subsidioActivo,
+      activo: editingUser ? editingUser.activo : true,
       ultimoAcceso: editingUser?.ultimoAcceso || 'Hoy',
     };
 
@@ -477,6 +476,21 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 </select>
               </div>
 
+              {/* Documento */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Documento *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.documento}
+                  onChange={(e) => setFormData({ ...formData, documento: e.target.value })}
+                  placeholder="Ej: 1098765432"
+                  className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
               {/* Nombre Completo */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
@@ -492,46 +506,14 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 />
               </div>
 
-              {/* Tipo Doc & Documento */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                    Tipo de Documento
-                  </label>
-                  <select
-                    value={formData.tipoDoc}
-                    onChange={(e) => setFormData({ ...formData, tipoDoc: e.target.value })}
-                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="C.C. Cédula">C.C. Cédula</option>
-                    <option value="T.I. Tarjeta Identidad">T.I. Tarjeta Identidad</option>
-                    <option value="P.E.P.">P.E.P.</option>
-                    <option value="C.E. Extranjería">C.E. Extranjería</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                    Número de Documento *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.documento}
-                    onChange={(e) => setFormData({ ...formData, documento: e.target.value })}
-                    placeholder="1098..."
-                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
-                  />
-                </div>
-              </div>
-
               {/* Email */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Correo Institucional (@sena.edu.co / @soy.sena.edu.co)
+                  Email / Correo Institucional *
                 </label>
                 <input
                   type="email"
+                  required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="usuario@sena.edu.co"
@@ -539,68 +521,21 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                 />
               </div>
 
-              {/* Ficha & Programa */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Ficha SENA (Si aplica a cliente) */}
+              {(formData.rol === 'Cliente' || !formData.rol) && (
                 <div>
                   <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                    Ficha SENA (Si aplica)
+                    Ficha SENA (Si aplica a cliente)
                   </label>
                   <input
                     type="text"
-                    value={formData.ficha}
+                    value={formData.ficha || ''}
                     onChange={(e) => setFormData({ ...formData, ficha: e.target.value })}
-                    placeholder="2671234"
+                    placeholder="Ej: 2671234"
                     className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                    Programa / Área
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.programa}
-                    onChange={(e) => setFormData({ ...formData, programa: e.target.value })}
-                    placeholder="ADSO, Cocina..."
-                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Saldo Monedero */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Saldo Monedero Institucional (COP)
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 font-mono">
-                    $
-                  </div>
-                  <input
-                    type="number"
-                    value={formData.saldoMonedero}
-                    onChange={(e) => setFormData({ ...formData, saldoMonedero: Number(e.target.value) })}
-                    placeholder="0"
-                    className="w-full bg-[#0c121e] border border-white/10 rounded-lg pl-8 pr-3 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Activo / Inactivo */}
-              <div>
-                <label className="flex items-center gap-2 p-2 rounded-lg bg-[#0c121e] border border-white/10 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.activo}
-                    onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-                    className="rounded accent-indigo-500"
-                  />
-                  <span className="text-[11px] font-semibold text-slate-300">
-                    Cuenta activa y habilitada para operar en Cafetería CGAO
-                  </span>
-                </label>
-              </div>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-white/10">
                 <button
