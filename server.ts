@@ -906,8 +906,9 @@ app.post('/api/supabase/usuarios', async (req, res) => {
     const dbRol = rolMap[user.rol] || 'cliente';
 
     const fichaNum = user.ficha ? (parseDocumentoNumero(user.ficha) || null) : null;
-    const tempPassword = String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`;
+    const userPassword = (user.clave && user.clave.trim()) ? user.clave.trim() : (String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`);
     const userEmail = user.email || `${doc}@sena.edu.co`;
+    const isActivo = user.activo !== false;
 
     let assignedId = authUserId || null;
 
@@ -916,13 +917,15 @@ app.post('/api/supabase/usuarios', async (req, res) => {
         // En llamadas a supabase.auth.signUp() pasamos metadata requerida
         const { data: authData, error: authErr } = await supabaseServer.auth.signUp({
           email: userEmail,
-          password: tempPassword,
+          password: userPassword,
           options: {
             data: {
               nombre: user.nombre,
               rol: dbRol,
               documento: doc,
               ficha: fichaNum,
+              clave: userPassword,
+              activo: isActivo,
             },
           },
         });
@@ -958,7 +961,7 @@ app.post('/api/supabase/usuarios', async (req, res) => {
             email: userEmail,
             rol: dbRol,
             ficha: fichaNum,
-            activo: user.activo !== false,
+            activo: isActivo,
           }, { onConflict: 'id' });
         }
 
@@ -970,24 +973,24 @@ app.post('/api/supabase/usuarios', async (req, res) => {
             ficha: fichaNum || 0,
           }, { onConflict: 'documento' });
         } else if (dbRol === 'admin') {
-          const hashedPass = await bcrypt.hash(tempPassword, 10);
+          const hashedPass = await bcrypt.hash(userPassword, 10);
           await supabaseServer.from('admin').upsert({
             documento: doc,
             nombre: user.nombre,
             clave: hashedPass,
             email: userEmail,
             rol: 'admin',
-            activo: user.activo !== false,
+            activo: isActivo,
           }, { onConflict: 'documento' });
         } else if (['cajero', 'despachador', 'auditor'].includes(dbRol)) {
-          const hashedPass = await bcrypt.hash(tempPassword, 10);
+          const hashedPass = await bcrypt.hash(userPassword, 10);
           await supabaseServer.from('personal').upsert({
             docpersonal: doc,
             nombre: user.nombre,
             clave: hashedPass,
             email: userEmail,
             rol: dbRol,
-            activo: user.activo !== false,
+            activo: isActivo,
           }, { onConflict: 'docpersonal' });
         }
       } catch (sbErr: any) {
@@ -1016,15 +1019,16 @@ app.post('/api/supabase/usuarios', async (req, res) => {
       if (existing) {
         existing.nombre = user.nombre;
         existing.email = userEmail;
-        existing.activo = user.activo !== false;
+        existing.activo = isActivo;
+        existing.clave = userPassword;
       } else {
         mockAdmins.push({
           documento: doc,
           nombre: user.nombre,
           email: userEmail,
-          clave: tempPassword,
+          clave: userPassword,
           rol: 'admin',
-          activo: user.activo !== false,
+          activo: isActivo,
         });
       }
       return res.json({ success: true, id: assignedId });
@@ -1035,15 +1039,16 @@ app.post('/api/supabase/usuarios', async (req, res) => {
       existingPersonal.nombre = user.nombre;
       existingPersonal.email = userEmail;
       existingPersonal.rol = dbRol as any;
-      existingPersonal.activo = user.activo !== false;
+      existingPersonal.activo = isActivo;
+      existingPersonal.clave = userPassword;
     } else {
       mockPersonal.push({
         docpersonal: doc,
         nombre: user.nombre,
         email: userEmail,
-        clave: tempPassword,
+        clave: userPassword,
         rol: dbRol as any,
-        activo: user.activo !== false,
+        activo: isActivo,
       });
     }
 

@@ -36,6 +36,7 @@ export interface AppUser {
   tipoDoc: string;
   nombre: string;
   email: string;
+  clave?: string;
   rol: UserRole;
   ficha?: string;
   programa?: string;

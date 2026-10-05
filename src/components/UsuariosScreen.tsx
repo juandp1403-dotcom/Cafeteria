@@ -49,6 +49,7 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
     tipoDoc: 'C.C. Cédula',
     nombre: '',
     email: '',
+    clave: '',
     rol: 'Cliente',
     ficha: '',
     programa: '',
@@ -95,6 +96,7 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
       tipoDoc: 'C.C. Cédula',
       nombre: '',
       email: '',
+      clave: '',
       rol: 'Cliente',
       ficha: '2671234',
       programa: 'ADSO CGAO',
@@ -110,7 +112,7 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
   const handleOpenEdit = (user: AppUser) => {
     if (isReadOnly) return;
     setEditingUser(user);
-    setFormData({ ...user });
+    setFormData({ ...user, clave: user.clave || '' });
     setIsModalOpen(true);
   };
 
@@ -127,6 +129,7 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
       tipoDoc: formData.tipoDoc || 'C.C. Cédula',
       nombre: formData.nombre?.trim() || '',
       email: formData.email?.trim() || `${formData.documento?.trim()}@sena.edu.co`,
+      clave: formData.clave?.trim() || '',
       rol: (formData.rol as UserRole) || 'Cliente',
       ficha: formData.ficha?.trim() || '',
       programa: formData.programa?.trim() || '',
@@ -525,6 +528,21 @@ export const UsuariosScreen: React.FC<UsuariosScreenProps> = ({
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="usuario@sena.edu.co"
+                  className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              {/* Contraseña / Clave */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  CONTRASEÑA / CLAVE *
+                </label>
+                <input
+                  type="password"
+                  required={!editingUser}
+                  value={formData.clave || ''}
+                  onChange={(e) => setFormData({ ...formData, clave: e.target.value })}
+                  placeholder="Mínimo 6 caracteres"
                   className="w-full bg-[#0c121e] border border-white/10 rounded-lg p-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
                 />
               </div>

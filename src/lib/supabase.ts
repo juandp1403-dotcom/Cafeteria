@@ -644,8 +644,9 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
 
     const dbRol = toDbRol(user.rol);
     const fichaNum = user.ficha ? (parseDocumentoNumero(user.ficha) || null) : null;
-    const tempPassword = String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`;
+    const userPassword = (user.clave && user.clave.trim()) ? user.clave.trim() : (String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`);
     const userEmail = user.email?.trim() || `${doc}@sena.edu.co`;
+    const isActivo = user.activo !== false;
 
     let authUserId: string | null = null;
 
@@ -654,13 +655,15 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
       try {
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: userEmail,
-          password: tempPassword,
+          password: userPassword,
           options: {
             data: {
               nombre: user.nombre,
               rol: dbRol,
               documento: doc,
               ficha: fichaNum,
+              clave: userPassword,
+              activo: isActivo,
             },
             emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
           },
@@ -677,7 +680,7 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
             email: userEmail,
             rol: dbRol,
             ficha: fichaNum,
-            activo: user.activo !== false,
+            activo: isActivo,
           }, { onConflict: 'id' });
 
           // Inserción / Upsert en la tabla correspondiente al rol seleccionado
@@ -691,19 +694,19 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
             await supabase.from('admin').upsert({
               documento: doc,
               nombre: user.nombre,
-              clave: tempPassword,
+              clave: userPassword,
               email: userEmail,
               rol: 'admin',
-              activo: user.activo !== false,
+              activo: isActivo,
             }, { onConflict: 'documento' });
           } else if (['cajero', 'despachador', 'auditor'].includes(dbRol)) {
             await supabase.from('personal').upsert({
               docpersonal: doc,
               nombre: user.nombre,
-              clave: tempPassword,
+              clave: userPassword,
               email: userEmail,
               rol: dbRol,
-              activo: user.activo !== false,
+              activo: isActivo,
             }, { onConflict: 'docpersonal' });
           }
         } else if (authError) {
@@ -718,7 +721,7 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
     const res = await fetch('/api/supabase/usuarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user: { ...user, email: userEmail }, authUserId }),
+      body: JSON.stringify({ user: { ...user, email: userEmail, clave: userPassword, activo: isActivo }, authUserId }),
     });
     const json = await res.json().catch(() => ({ success: false, error: 'Respuesta inválida del servidor.' }));
 
