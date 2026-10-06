@@ -167,7 +167,7 @@ describe('IdentificacionScreen — validación', () => {
     renderScreen();
     await u.click(getLey1581());
 
-    expect(getDocumento().validity.valueMissing).toBe(true);
+    expect((getDocumento() as HTMLInputElement).validity.valueMissing).toBe(true);
     await u.click(getSubmit());
     expect(onStartOrder).not.toHaveBeenCalled();
   });

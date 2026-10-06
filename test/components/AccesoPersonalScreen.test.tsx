@@ -80,7 +80,7 @@ describe('AccesoPersonalScreen — validaciones del formulario', () => {
     renderScreen();
 
     await user.type(getPassword(), 'secreto123');
-    expect(getIdentifier().validity.valueMissing).toBe(true);
+    expect((getIdentifier() as HTMLInputElement).validity.valueMissing).toBe(true);
 
     await user.click(getSubmit());
 
@@ -94,7 +94,7 @@ describe('AccesoPersonalScreen — validaciones del formulario', () => {
     renderScreen();
 
     await user.type(getIdentifier(), '1098765432');
-    expect(getPassword().validity.valueMissing).toBe(true);
+    expect((getPassword() as HTMLInputElement).validity.valueMissing).toBe(true);
 
     await user.click(getSubmit());
 

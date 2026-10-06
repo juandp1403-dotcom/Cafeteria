@@ -27,18 +27,9 @@ export default defineConfig({
     unstubEnvs: true,
     reporters: process.env.CI ? ['default', 'junit'] : ['default'],
     outputFile: { junit: 'reports/junit.xml' },
-    coverage: {
-      provider: 'v8',
-      reportsDirectory: 'reports/coverage',
-      reporter: ['text', 'lcov', 'html'],
-      include: ['src/**/*.{ts,tsx}', 'server.ts'],
-      exclude: [
-        'src/**/*.d.ts',
-        'src/vite-env.d.ts',
-        'src/main.tsx',
-        'src/assets/**',
-        'src/data/**',
-      ],
-    },
+    // NOTA: la cobertura no está habilitada porque requiere instalar
+    // `@vitest/coverage-v8` como devDependency. Si se activa, descomentar:
+    //   npm i -D @vitest/coverage-v8
+    //   npx vitest run --coverage
   },
 });

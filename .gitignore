@@ -38,6 +38,7 @@ lerna-debug.log*
 
 # Test coverage & caches
 coverage/
+reports/
 .nyc_output/
 .cache/
 .parcel-cache/

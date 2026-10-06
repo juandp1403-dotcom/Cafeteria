@@ -120,7 +120,9 @@ describe('flujo completo del aprendiz', () => {
   it('no muestra un turno falso si el backend no responde', async () => {
     const user = userEvent.setup();
     api.restore();
-    api = installApiMock(5);
+    // Se instala el mock y luego se sustituye por una versión que solo falla en
+    // /turno-actual; api.restore() se encargará del stub global al finalizar.
+    api = installApiMock();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -154,12 +156,11 @@ describe('flujo completo del aprendiz', () => {
     await screen.findByText('Catálogo de Alimentos CGAO');
     await user.click(await screen.findByRole('button', { name: /agregar/i }));
 
-    // El carrito vive en el panel "Mi Bandeja de Pedido".
+    // El carrito vive en el panel "Mi Bandeja de Pedido" (la ficha del producto
+    // también muestra su nombre, por eso se cuentan todas las apariciones).
     expect(await screen.findByText('Mi Bandeja de Pedido')).toBeInTheDocument();
-    expect(screen.getByText('Empanada Artesanal')).toBeInTheDocument();
+    expect(screen.getAllByText('Empanada Artesanal').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('1 ítem')).toBeInTheDocument();
-
-    // 1 empanada × $5.000
     expect(screen.getAllByText('$5.000').length).toBeGreaterThan(0);
     expect(screen.getByText('Subtotal Pedido')).toBeInTheDocument();
     expect(screen.getByText('TOTAL A LIQUIDAR')).toBeInTheDocument();
@@ -173,11 +174,13 @@ describe('flujo completo del aprendiz', () => {
     await screen.findByText('Catálogo de Alimentos CGAO');
     await user.click(await screen.findByRole('button', { name: /agregar/i }));
     await screen.findByText('Mi Bandeja de Pedido');
+    expect(screen.getAllByText('Empanada Artesanal').length).toBeGreaterThanOrEqual(2);
 
     await user.click(screen.getByTitle('Eliminar de la bandeja'));
 
-    await waitFor(() => expect(screen.queryByText('Empanada Artesanal')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Empanada Artesanal')).toHaveLength(1));
     expect(screen.getByText('Agrega alimentos del menú para gestionar tu pedido.')).toBeInTheDocument();
+    expect(screen.getByText('0 ítems')).toBeInTheDocument();
   });
 });
 

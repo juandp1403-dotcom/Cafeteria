@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Tipos, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar tipos (TypeScript)
+        run: npm run lint
+
+      - name: Ejecutar suite de tests
+        # La suite arranca su propio servidor Express (modo in-memory-mock, sin
+        # credenciales de Supabase) vía test/global-setup.ts, así que no hace falta
+        # levantar nada más en el workflow.
+        run: npm test
+
+      - name: Construir bundle de producción
+        run: npm run build
+
+      - name: Subir reporte de tests (JUnit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: reports/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
