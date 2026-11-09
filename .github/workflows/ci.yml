@@ -19,6 +19,9 @@ jobs:
     name: Tipos, tests y build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Este job solo necesita leer el contenido del repositorio.
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
