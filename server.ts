@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import bcryptPkg from 'bcryptjs';
 const bcrypt = (bcryptPkg as any).default || bcryptPkg;
 import { randomBytes, scryptSync, pbkdf2Sync, timingSafeEqual } from 'crypto';
+import { rateLimit } from 'express-rate-limit';
 
 process.env.DISABLE_HMR = 'true';
 
@@ -19,19 +20,48 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 
+// Protege todos los endpoints API contra abuso. El login tiene un límite más
+// estricto abajo porque es el objetivo principal de ataques de fuerza bruta.
+const apiRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skip: (req) => req.path === '/health',
+  message: { success: false, error: 'Demasiadas solicitudes. Inténtalo de nuevo en un momento.' },
+});
+
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { success: false, error: 'Demasiados intentos de inicio de sesión. Espera unos minutos.' },
+});
+
+const webRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: 'Demasiadas solicitudes. Inténtalo de nuevo en un momento.',
+});
+
+app.use('/api', apiRateLimiter);
+
 // Server-side Supabase client credentials come ONLY from process.env (no hardcoded fallbacks)
 function isRealSupabaseUrl(url?: string): boolean {
   if (!url) return false;
-  const trimmed = url.trim();
-  if (
-    trimmed.includes('tu-proyecto') ||
-    trimmed.includes('your-project') ||
-    trimmed.includes('example.com') ||
-    !trimmed.startsWith('https://')
-  ) {
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'https:' &&
+      /^[a-z0-9-]+\.supabase\.co$/i.test(parsed.hostname) &&
+      parsed.pathname === '/' &&
+      !parsed.username &&
+      !parsed.password;
+  } catch {
     return false;
   }
-  return true;
 }
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
@@ -359,7 +389,7 @@ function rolAplicacion(rol: string | null, esAdmin: boolean): 'Admin' | 'Cajero'
   }
 }
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
   try {
     const identifier = String(req.body?.identifier || '').trim();
     const password = String(req.body?.password || '');
@@ -1307,7 +1337,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', webRateLimiter, (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

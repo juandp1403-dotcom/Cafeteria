@@ -17,13 +17,11 @@ import {
   X,
   Save,
   Tag,
-  Upload,
   FileUp,
   Download,
   Calendar,
   User,
   Clock,
-  Image as ImageIcon,
   Check
 } from 'lucide-react';
 import { exportInventoryReport } from '../utils/exportExcel';
@@ -240,7 +238,6 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
   const [importPreview, setImportPreview] = useState<Partial<ProductItem>[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -354,25 +351,6 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     setEditingProduct(product);
     setFormData({ ...product });
     setIsModalOpen(true);
-  };
-
-  // Handle local image upload from device
-  const handleLocalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      showToast('Por favor selecciona un archivo de imagen válido (PNG, JPG, WEBP).');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
-      setFormData((prev) => ({ ...prev, imagen: result }));
-      showToast('Imagen cargada localmente desde tu equipo con éxito.');
-    };
-    reader.readAsDataURL(file);
   };
 
   // Save product from modal
@@ -1422,57 +1400,6 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
             </div>
 
             <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
-              {/* Product Image Section: DEDICATED LOCAL UPLOAD (NO PRESETS) */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Fotografía del Producto *
-                </label>
-                <div className="p-4 rounded-xl bg-[#090e1a] border border-white/10 flex flex-col sm:flex-row items-center gap-4 w-full box-border">
-                  {/* Current image preview */}
-                  <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-white/15 shrink-0 bg-black/40 shadow-inner flex items-center justify-center">
-                    <img
-                      src={formData.imagen || assets.empanadas}
-                      alt="Vista previa"
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  <div className="flex-1 w-full min-w-0 space-y-2.5">
-                    {/* Botón para subir imagen desde local */}
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-400/40 text-indigo-100 hover:text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-sm"
-                    >
-                      <Upload className="w-4 h-4 text-indigo-300 shrink-0" />
-                      <span className="truncate">Cargar Imagen desde este Equipo (Local)</span>
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLocalImageUpload}
-                      className="hidden"
-                    />
-
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <span className="shrink-0 text-slate-500 font-medium">O enlace directo:</span>
-                      <input
-                        type="text"
-                        value={formData.imagen || ''}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, imagen: e.target.value }))}
-                        placeholder="https://ejemplo.com/foto.jpg"
-                        className="flex-1 bg-[#060a12] border border-white/10 rounded-lg px-2.5 py-1 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 text-[11px]"
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-500">
-                      Formatos soportados: JPG, PNG, WEBP. La imagen se almacena en la ficha técnica del producto.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {/* Nombre */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
