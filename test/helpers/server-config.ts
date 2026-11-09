@@ -26,13 +26,18 @@ export function testServerEnv(): Record<string, string> {
     VITE_SUPABASE_URL: '',
     VITE_SUPABASE_ANON_KEY: '',
     DISABLE_HMR: 'true',
+    ALLOW_DEMO_ADMIN: 'true',
+    DEMO_ADMIN_EMAIL: 'admin@sena.edu.co',
+    DEMO_ADMIN_PASSWORD: 'admin1234-demo',
+    DEMO_ADMIN_DOC: '1098765432',
+    DEMO_ADMIN_NAME: 'Administrador SENA CGAO',
   };
 }
 
 /** Credenciales del administrador institucional sembrado por el servidor. */
 export const ADMIN_CREDENTIALS = {
   email: 'admin@sena.edu.co',
-  password: 'admin1234',
+  password: 'admin1234-demo',
   documento: '1098765432',
   nombre: 'Administrador SENA CGAO',
 } as const;

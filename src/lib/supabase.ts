@@ -4,19 +4,21 @@ import { ProductItem, BajaItem, AuditLog, AppUser, Order, POSOrder } from '../ty
 const SUPABASE_URL =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
   (typeof process !== 'undefined' && (process.env?.SUPABASE_URL || process.env?.VITE_SUPABASE_URL)) ||
-  'https://avwoaoxbxgbgvgqgvizo.supabase.co';
+  '';
 
 const SUPABASE_ANON_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-  (typeof process !== 'undefined' && (process.env?.SUPABASE_SERVICE_ROLE_KEY || process.env?.SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) ||
-  'sb_publishable_jyF6iE-KjmN5S0sPAlMVmg_hiZeb50Z';
+  (typeof process !== 'undefined' && (process.env?.SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) ||
+  '';
 
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: typeof window !== 'undefined',
-    autoRefreshToken: true,
-  },
-});
+export const supabase: SupabaseClient | null = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: typeof window !== 'undefined',
+        autoRefreshToken: true,
+      },
+    })
+  : null;
 
 export function toDbRol(rol?: string): 'admin' | 'cajero' | 'despachador' | 'auditor' | 'cliente' {
   const r = (rol || '').toLowerCase().trim();
@@ -644,7 +646,10 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
 
     const dbRol = toDbRol(user.rol);
     const fichaNum = user.ficha ? (parseDocumentoNumero(user.ficha) || null) : null;
-    const userPassword = (user.clave && user.clave.trim()) ? user.clave.trim() : (String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`);
+    const userPassword = user.clave?.trim() || '';
+    if (dbRol !== 'cliente' && userPassword.length < 12) {
+      return { ok: false, reason: 'La contraseña debe tener al menos 12 caracteres.' };
+    }
     const userEmail = user.email?.trim() || `${doc}@sena.edu.co`;
     const isActivo = user.activo !== false;
 
@@ -662,7 +667,6 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
               rol: dbRol,
               documento: doc,
               ficha: fichaNum,
-              clave: userPassword,
               activo: isActivo,
             },
             emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
@@ -694,7 +698,6 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
             await supabase.from('admin').upsert({
               documento: doc,
               nombre: user.nombre,
-              clave: userPassword,
               email: userEmail,
               rol: 'admin',
               activo: isActivo,
@@ -703,7 +706,6 @@ export async function saveUsuarioToSupabase(user: AppUser): Promise<SaveUsuarioR
             await supabase.from('personal').upsert({
               docpersonal: doc,
               nombre: user.nombre,
-              clave: userPassword,
               email: userEmail,
               rol: dbRol,
               activo: isActivo,

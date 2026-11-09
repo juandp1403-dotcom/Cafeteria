@@ -5,12 +5,15 @@ import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import bcryptPkg from 'bcryptjs';
 const bcrypt = (bcryptPkg as any).default || bcryptPkg;
-import { scryptSync, pbkdf2Sync, timingSafeEqual } from 'crypto';
+import { randomBytes, scryptSync, pbkdf2Sync, timingSafeEqual } from 'crypto';
 
 process.env.DISABLE_HMR = 'true';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3589', 10);
+const ALLOW_DEMO_ADMIN = process.env.ALLOW_DEMO_ADMIN === 'true';
+const staffSessions = new Map<string, { role: string; expiresAt: number }>();
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 // Security Hardening
 app.disable('x-powered-by');
@@ -32,7 +35,9 @@ function isRealSupabaseUrl(url?: string): boolean {
 }
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+// Nunca degradar una credencial pública a service-role. La service role key
+// permite escribir/borrar datos y debe existir únicamente en el servidor.
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
 const isConfigured = isRealSupabaseUrl(SUPABASE_URL) && !!SUPABASE_SERVICE_ROLE_KEY;
@@ -57,6 +62,31 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();
+});
+
+function readSessionCookie(req: express.Request): string | null {
+  const header = req.headers.cookie || '';
+  const match = /(?:^|;\s*)cgao_session=([^;]+)/.exec(header);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+// El modo demo de tests es explícitamente aislado. En cualquier otro entorno,
+// las operaciones internas requieren una sesión emitida por el login.
+app.use('/api/supabase', (req, res, next) => {
+  if (ALLOW_DEMO_ADMIN) return next();
+
+  const publicRoute =
+    (req.method === 'GET' && (/^\/productos\/?$/.test(req.path) || /^\/status\/?$/.test(req.path) || /^\/clientes\/[^/]+\/?$/.test(req.path) || /^\/ventas\/turno-actual\/?$/.test(req.path))) ||
+    (req.method === 'POST' && (/^\/clientes\/?$/.test(req.path) || /^\/ventas\/?$/.test(req.path)));
+  if (publicRoute) return next();
+
+  const token = readSessionCookie(req);
+  const session = token ? staffSessions.get(token) : undefined;
+  if (!session || session.expiresAt <= Date.now()) {
+    if (token) staffSessions.delete(token);
+    return res.status(401).json({ success: false, error: 'Sesión requerida.' });
+  }
+  return next();
 });
 
 // Healthcheck Endpoint
@@ -92,10 +122,11 @@ interface MockProducto {
 }
 
 // Credenciales oficiales de administración institucional solicitadas
-const DEFAULT_ADMIN_EMAIL = 'admin@sena.edu.co';
-const DEFAULT_ADMIN_PASS = 'admin1234';
-const DEFAULT_ADMIN_DOC = 1098765432;
-const DEFAULT_ADMIN_NAME = 'Administrador SENA CGAO';
+const DEFAULT_ADMIN_EMAIL = process.env.DEMO_ADMIN_EMAIL || '';
+const DEFAULT_ADMIN_PASS = process.env.DEMO_ADMIN_PASSWORD || '';
+const DEFAULT_ADMIN_DOC = Number.parseInt(process.env.DEMO_ADMIN_DOC || '0', 10);
+const DEFAULT_ADMIN_NAME = process.env.DEMO_ADMIN_NAME || 'Administrador de demostración';
+const hasDemoAdmin = ALLOW_DEMO_ADMIN && DEFAULT_ADMIN_EMAIL.length > 0 && DEFAULT_ADMIN_PASS.length >= 12 && DEFAULT_ADMIN_DOC > 0;
 
 // Catálogo y pedidos vacíos por defecto (la app opera exclusivamente con Supabase)
 let mockProductos: MockProducto[] = [];
@@ -110,14 +141,14 @@ interface MockAdmin {
 }
 
 const mockAdmins: MockAdmin[] = [
-  {
+  ...(hasDemoAdmin ? [{
     documento: DEFAULT_ADMIN_DOC,
     nombre: DEFAULT_ADMIN_NAME,
     email: DEFAULT_ADMIN_EMAIL,
     clave: bcrypt.hashSync(DEFAULT_ADMIN_PASS, 10),
-    rol: 'admin',
+    rol: 'admin' as const,
     activo: true,
-  },
+  }] : []),
 ];
 
 interface MockPersonal {
@@ -194,6 +225,7 @@ const mockAuditoria: MockAuditoria[] = [];
 
 // Función para garantizar que el usuario admin@sena.edu.co / admin1234 exista siempre en Supabase
 async function ensureAdminUser(): Promise<void> {
+  if (!hasDemoAdmin) return;
   const hashed = bcrypt.hashSync(DEFAULT_ADMIN_PASS, 10);
 
   // 1. Sincronizar en memoria
@@ -256,6 +288,21 @@ async function ensureAdminUser(): Promise<void> {
 // AUTH: LOGIN CON CONTRASEÑA REAL (bcryptjs + formatos Werkzeug/plano heredados)
 // ---------------------------------------------------------------------------
 
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+
+function loginRateLimited(key: string): boolean {
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+  if (!current || current.resetAt <= now) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return false;
+  }
+  current.count += 1;
+  return current.count > LOGIN_MAX_ATTEMPTS;
+}
+
 function verifyPassword(stored: string | null | undefined, plain: string): boolean {
   if (!stored || !plain) return false;
 
@@ -298,8 +345,8 @@ function verifyPassword(stored: string | null | undefined, plain: string): boole
     }
   }
 
-  // 4) Contraseña en texto plano / demo
-  return stored === plain;
+  // Las contraseñas en texto plano heredadas no se aceptan.
+  return false;
 }
 
 function rolAplicacion(rol: string | null, esAdmin: boolean): 'Admin' | 'Cajero' | 'Despachador' | 'Auditor' {
@@ -316,8 +363,13 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const identifier = String(req.body?.identifier || '').trim();
     const password = String(req.body?.password || '');
+    const rateKey = `${req.ip}:${identifier.toLowerCase().slice(0, 120)}`;
 
-    if (!identifier || !password) {
+    if (loginRateLimited(rateKey)) {
+      return res.status(429).json({ success: false, error: 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.' });
+    }
+
+    if (!identifier || !password || identifier.length > 160 || password.length > 256) {
       return res.status(400).json({
         success: false,
         error: 'Ingresa el correo institucional o documento y tu contraseña.',
@@ -376,7 +428,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!match) {
       return res.status(401).json({
         success: false,
-        error: 'Usuario no encontrado en el directorio CGAO. Verifica tus datos con la Coordinación.',
+        error: 'Credenciales inválidas.',
       });
     }
 
@@ -390,7 +442,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!verifyPassword(match.clave, password)) {
       return res.status(401).json({
         success: false,
-        error: 'Contraseña incorrecta. Verifica tus credenciales e inténtalo de nuevo.',
+        error: 'Credenciales inválidas.',
       });
     }
 
@@ -420,9 +472,16 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
+    const sessionToken = randomBytes(32).toString('base64url');
+    staffSessions.set(sessionToken, { role: rol, expiresAt: Date.now() + SESSION_TTL_MS });
+    res.setHeader(
+      'Set-Cookie',
+      `cgao_session=${encodeURIComponent(sessionToken)}; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    );
     res.json({ success: true, rol, nombre, email });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || 'Error interno de autenticación.' });
+    console.error('[auth] Error interno de autenticación:', err);
+    res.status(500).json({ success: false, error: 'Error interno de autenticación.' });
   }
 });
 
@@ -906,7 +965,10 @@ app.post('/api/supabase/usuarios', async (req, res) => {
     const dbRol = rolMap[user.rol] || 'cliente';
 
     const fichaNum = user.ficha ? (parseDocumentoNumero(user.ficha) || null) : null;
-    const userPassword = (user.clave && user.clave.trim()) ? user.clave.trim() : (String(user.documento).length >= 6 ? String(user.documento) : `${user.documento}123456`);
+    const userPassword = typeof user.clave === 'string' ? user.clave.trim() : '';
+    if (dbRol !== 'cliente' && userPassword.length < 12) {
+      return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 12 caracteres.' });
+    }
     const userEmail = user.email || `${doc}@sena.edu.co`;
     const isActivo = user.activo !== false;
 
@@ -924,7 +986,6 @@ app.post('/api/supabase/usuarios', async (req, res) => {
               rol: dbRol,
               documento: doc,
               ficha: fichaNum,
-              clave: userPassword,
               activo: isActivo,
             },
           },
@@ -1020,13 +1081,13 @@ app.post('/api/supabase/usuarios', async (req, res) => {
         existing.nombre = user.nombre;
         existing.email = userEmail;
         existing.activo = isActivo;
-        existing.clave = userPassword;
+        existing.clave = await bcrypt.hash(userPassword, 10);
       } else {
         mockAdmins.push({
           documento: doc,
           nombre: user.nombre,
           email: userEmail,
-          clave: userPassword,
+          clave: await bcrypt.hash(userPassword, 10),
           rol: 'admin',
           activo: isActivo,
         });
@@ -1040,13 +1101,13 @@ app.post('/api/supabase/usuarios', async (req, res) => {
       existingPersonal.email = userEmail;
       existingPersonal.rol = dbRol as any;
       existingPersonal.activo = isActivo;
-      existingPersonal.clave = userPassword;
+      existingPersonal.clave = await bcrypt.hash(userPassword, 10);
     } else {
       mockPersonal.push({
         docpersonal: doc,
         nombre: user.nombre,
         email: userEmail,
-        clave: userPassword,
+        clave: await bcrypt.hash(userPassword, 10),
         rol: dbRol as any,
         activo: isActivo,
       });
