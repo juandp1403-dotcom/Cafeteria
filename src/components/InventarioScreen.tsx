@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { exportInventoryReport } from '../utils/exportExcel';
 import { assets } from '../assets/images';
-import * as XLSX from 'xlsx';
 
 interface InventarioScreenProps {
   products: ProductItem[];
@@ -42,7 +41,7 @@ interface InventarioScreenProps {
   onImportProducts?: (imported: ProductItem[]) => void;
 }
 
-// --- Utilidades de importación Excel/CSV (formato compatible con la app Flask SENA) ---
+// --- Utilidades de importación CSV (formato compatible con la app Flask SENA) ---
 
 function normalizarEncabezado(text: string): string {
   return text
@@ -159,7 +158,7 @@ function parsearFilasProductos(rows: (string | number)[][]): Partial<ProductItem
       id: `prod-imp-${Date.now()}-${i}`,
       nombre,
       descripcion:
-        col['descripcion'] !== undefined ? String(row[col['descripcion']] ?? '') || 'Producto cargado desde archivo Excel institucional.' : 'Producto cargado desde archivo Excel institucional.',
+        col['descripcion'] !== undefined ? String(row[col['descripcion']] ?? '') || 'Producto cargado desde archivo CSV institucional.' : 'Producto cargado desde archivo CSV institucional.',
       categoria: cat.key,
       categoriaLabel: cat.label,
       subcategoria: col['subcategoria'] !== undefined ? String(row[col['subcategoria']] ?? '') || 'Insumo' : 'Insumo',
@@ -235,7 +234,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
   const [bajaMotivo, setBajaMotivo] = useState<string>('Fecha de vencimiento caducada');
   const [bajaObservaciones, setBajaObservaciones] = useState<string>('');
 
-  // Modal state for "Importar Excel"
+  // Modal state for "Importar CSV"
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFileName, setImportFileName] = useState<string | null>(null);
   const [importPreview, setImportPreview] = useState<Partial<ProductItem>[]>([]);
@@ -475,7 +474,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     showToast(`Baja registrada: ${bajaCantidad} u de "${selectedProductForBaja.nombre}" descargadas de inventario.`);
   };
 
-  // Open "Importar Excel" modal
+  // Open "Importar CSV" modal
   const handleOpenImportModal = () => {
     if (isReadOnly) return;
     setImportFileName(null);
@@ -484,7 +483,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     setIsImportModalOpen(true);
   };
 
-  // Download Sample Excel Template
+  // Download Sample CSV Template
   const handleDownloadTemplate = () => {
     const headers = ['Nombre', 'Precio ($)', 'Costo ($)', 'Stock', 'Stock Mínimo', 'Categoría', 'Subcategoría', 'Descripción', 'Activo'];
     const sampleRows = [
@@ -506,7 +505,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     showToast('Plantilla CSV descargada exitosamente.');
   };
 
-  // Handle Excel / CSV file selection and parsing (header-based, Flask-compatible columns)
+  // Handle CSV file selection and parsing (header-based, Flask-compatible columns)
   const handleExcelFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -527,43 +526,31 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
           setImportPreview(parsedItems);
         }
       } catch {
-        setImportError('Error al leer el archivo. Asegúrate de usar el formato de la plantilla CSV/Excel.');
+        setImportError('Error al leer el archivo. Asegúrate de usar el formato CSV de la plantilla.');
       }
     };
 
-    if (/\.(xlsx|xls)$/i.test(file.name)) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const data = new Uint8Array(event.target?.result as ArrayBuffer);
-          const wb = XLSX.read(data, { type: 'array' });
-          const firstSheetName = wb.SheetNames[0];
-          const sheet = wb.Sheets[firstSheetName];
-          const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1, defval: '' });
-          onRows(rows);
-        } catch {
-          setImportError('No se pudo descifrar el archivo Excel. Verifica que sea un .xlsx/.xls válido.');
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const text = event.target?.result as string;
-          const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-          const delimiter = lines[0]?.includes(';') ? ';' : ',';
-          const rows = lines.map((line) => line.split(delimiter).map((c) => c.replace(/^["']|["']$/g, '').trim()));
-          onRows(rows);
-        } catch {
-          setImportError('Error al leer el archivo CSV.');
-        }
-      };
-      reader.readAsText(file);
+    if (!/\.csv$/i.test(file.name)) {
+      setImportError('Por seguridad, la importación está limitada a archivos CSV.');
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        const delimiter = lines[0]?.includes(';') ? ';' : ',';
+        const rows = lines.map((line) => line.split(delimiter).map((c) => c.replace(/^["']|["']$/g, '').trim()));
+        onRows(rows);
+      } catch {
+        setImportError('Error al leer el archivo CSV.');
+      }
+    };
+    reader.readAsText(file);
   };
 
-  // Confirm Excel Import
+  // Confirm CSV Import
   const handleConfirmImport = () => {
     if (importPreview.length === 0) return;
 
@@ -596,10 +583,10 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
     showToast(`Se importaron exitosamente ${importPreview.length} productos al catálogo.`);
   };
 
-  // Trigger Excel Export (Multi-sheet: Inventario + Bajas)
+  // Trigger CSV Export (Inventario + Bajas)
   const handleExportExcel = () => {
     exportInventoryReport(products, bajas);
-    showToast('Reporte Excel generado con 2 hojas: Catálogo Inventario y Registro de Bajas.');
+    showToast('Reporte CSV generado: Catálogo Inventario y Registro de Bajas.');
   };
 
   return (
@@ -626,11 +613,11 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
             Gestión de Inventario CGAO
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-            Control integral de existencias, importación masiva por Excel, bajas con justificación técnica y seguimiento semanal.
+            Control integral de existencias, importación masiva por CSV, bajas con justificación técnica y seguimiento semanal.
           </p>
         </div>
 
-        {/* Action Buttons: Importar Excel, Dar de Baja, Exportar Excel, Nuevo Producto */}
+          {/* Action Buttons: Importar CSV, Dar de Baja, Exportar CSV, Nuevo Producto */}
         <div className="flex flex-wrap items-center gap-2.5">
           {isReadOnly && (
             <div className="px-3 py-1.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5">
@@ -644,10 +631,10 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
             <button
               onClick={handleOpenImportModal}
               className="py-2.5 px-3.5 rounded-xl bg-[#131d31] hover:bg-[#1c2a47] border border-white/10 hover:border-indigo-500/50 text-slate-200 hover:text-white text-xs font-bold font-display flex items-center gap-2 transition-all cursor-pointer shadow-sm"
-              title="Importar catálogo masivo desde archivo Excel (.xlsx / .csv)"
+              title="Importar catálogo masivo desde archivo CSV"
             >
               <FileUp className="w-4 h-4 text-indigo-400" />
-              <span>Importar Excel</span>
+              <span>Importar CSV</span>
             </button>
           )}
 
@@ -663,13 +650,13 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
             </button>
           )}
 
-          {/* Exportar Excel */}
+          {/* Exportar CSV */}
           <button
             onClick={handleExportExcel}
             className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold font-display flex items-center gap-2 shadow-md transition-all cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>Descargar Inventario (Excel)</span>
+            <span>Descargar Inventario (CSV)</span>
           </button>
 
           {/* Nuevo Producto */}
@@ -1286,7 +1273,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                 </span>
                 <h3 className="text-lg font-bold text-white font-display mt-0.5 flex items-center gap-2">
                   <FileUp className="w-5 h-5 text-indigo-400" />
-                  <span>Importar Inventario desde Excel / CSV</span>
+                  <span>Importar Inventario desde CSV</span>
                 </h3>
               </div>
               <button
@@ -1303,7 +1290,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                 <div>
                   <span className="font-bold text-white block">¿No tienes el formato de columnas?</span>
                   <span className="text-[11px] text-slate-300">
-                    Descarga la plantilla oficial con encabezados preconfigurados para Excel.
+                    Descarga la plantilla oficial con encabezados preconfigurados para CSV/Excel.
                   </span>
                 </div>
                 <button
@@ -1319,15 +1306,15 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
               {/* Step 2: Upload File Box */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Seleccionar Archivo de Excel / CSV *
+                  Seleccionar Archivo CSV *
                 </label>
                 <div
                   onClick={() => excelInputRef.current?.click()}
                   className="border-2 border-dashed border-white/20 hover:border-indigo-400/50 rounded-2xl p-6 text-center cursor-pointer bg-[#0c121e] hover:bg-[#111827] transition-all"
                 >
                   <FileSpreadsheet className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
-                  <p className="font-semibold text-white">Haz clic aquí para seleccionar tu archivo Excel o CSV</p>
-                  <p className="text-[10px] text-slate-400 mt-1">Soporta archivos .xlsx, .xls y .csv con delimitación estándar</p>
+                  <p className="font-semibold text-white">Haz clic aquí para seleccionar tu archivo CSV</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Soporta archivos .csv con delimitación estándar</p>
                   {importFileName && (
                     <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-mono font-semibold">
                       <Check className="w-3.5 h-3.5" />
@@ -1338,7 +1325,7 @@ export const InventarioScreen: React.FC<InventarioScreenProps> = ({
                 <input
                   ref={excelInputRef}
                   type="file"
-                  accept=".csv, .xlsx, .xls"
+                  accept=".csv"
                   onChange={handleExcelFileSelect}
                   className="hidden"
                 />

@@ -1,9 +1,10 @@
-import * as XLSX from 'xlsx';
 import { BajaItem } from '../types';
 
 /**
- * Excel / CSV Export Utility for Cafetería CGAO SENA
- * Uses SheetJS (XLSX) to produce native multi-sheet .xlsx files and CSV fallback
+ * CSV Export Utility for Cafetería CGAO SENA.
+ *
+ * Los datos de inventario se exportan como CSV para evitar depender de parsers
+ * XLSX con vulnerabilidades conocidas. El formato se abre directamente en Excel.
  */
 
 export function downloadCSV(filename: string, rows: (string | number)[][]) {
@@ -110,7 +111,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 /**
- * Exports a multi-sheet Excel (.xlsx) file containing:
+ * Exports a CSV file containing:
  * - Sheet 1: "Inventario Activo" (format compatible with the reference Flask app:
  *   headers Nombre, Precio ($), Costo ($), Stock, Stock Mínimo, Categoría, Subcategoría,
  *   Descripción, Activo + ID, so the file can be re-imported by either system)
@@ -118,10 +119,7 @@ const CATEGORY_LABELS: Record<string, string> = {
  */
 export function exportInventoryReport(items: ExportInventoryItem[], bajas: BajaItem[] = []) {
   const timestamp = new Date().toISOString().slice(0, 10);
-  const filename = `Inventario_y_Bajas_CGAO_Velez_${timestamp}.xlsx`;
-
-  try {
-    const wb = XLSX.utils.book_new();
+  const filename = `Inventario_y_Bajas_CGAO_Velez_${timestamp}.csv`;
 
     // Sheet 1: Inventario Activo
     const inventoryHeaders = [
@@ -161,24 +159,6 @@ export function exportInventoryReport(items: ExportInventoryItem[], bajas: BajaI
       ['TOTAL', '', totalValorPrecio, totalValorCosto, '', '', '', '', '', ''],
     ];
 
-    const wsInventory = XLSX.utils.aoa_to_sheet(inventoryData);
-
-    // Auto-fit columns
-    wsInventory['!cols'] = [
-      { wch: 12 }, // ID
-      { wch: 30 }, // Nombre
-      { wch: 14 }, // Precio
-      { wch: 14 }, // Costo
-      { wch: 10 }, // Stock
-      { wch: 14 }, // Stock Mínimo
-      { wch: 18 }, // Categoría
-      { wch: 20 }, // Subcategoría
-      { wch: 40 }, // Descripción
-      { wch: 10 }, // Activo
-    ];
-
-    XLSX.utils.book_append_sheet(wb, wsInventory, 'Inventario Activo');
-
     // Sheet 2: Bajas y Mermas
     const bajasHeaders = [
       'ID Baja',
@@ -216,34 +196,12 @@ export function exportInventoryReport(items: ExportInventoryItem[], bajas: BajaI
       ['TOTAL UNIDADES DE BAJA', '', '', '', totalUnidadesBaja, '', '', '', '', ''],
     ];
 
-    const wsBajas = XLSX.utils.aoa_to_sheet(bajasData);
-    wsBajas['!cols'] = [
-      { wch: 12 }, // ID
-      { wch: 12 }, // Fecha
-      { wch: 10 }, // Hora
-      { wch: 28 }, // Producto
-      { wch: 12 }, // Cantidad
-      { wch: 16 }, // Costo Unitario
-      { wch: 16 }, // Total
-      { wch: 40 }, // Motivo
-      { wch: 16 }, // Categoría
-      { wch: 28 }, // Responsable
-    ];
-
-    XLSX.utils.book_append_sheet(wb, wsBajas, 'Bajas y Mermas');
-
-    // Download native multi-sheet Excel file
-    XLSX.writeFile(wb, filename);
-  } catch (err) {
-    console.error('Error generating multi-sheet Excel workbook:', err);
-    // Fallback to CSV with both sections
     const combinedRows = [
       ['=== HOJA 1: INVENTARIO GENERAL ACTIVO ==='],
-      ...items.map((item) => [item.id, item.nombre, item.categoria, item.costo, item.precio, item.stock]),
+      ...inventoryData,
       [],
       ['=== HOJA 2: REGISTRO DE BAJAS Y MERMAS ==='],
-      ...bajas.map((b) => [b.id, b.fecha, b.productoNombre, b.cantidad, b.costoTotal, b.motivo, b.responsable]),
+      ...bajasData,
     ];
-    downloadCSV(`Inventario_CGAO_${timestamp}.csv`, combinedRows);
-  }
+    downloadCSV(filename, combinedRows);
 }

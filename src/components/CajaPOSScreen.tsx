@@ -267,14 +267,14 @@ export const CajaPOSScreen: React.FC<CajaPOSScreenProps> = ({
                   className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-white hover:bg-emerald-950/60 hover:text-emerald-300 flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <span>Por Día (Ventas de Hoy)</span>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">.csv / xlsx</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">.csv</span>
                 </button>
                 <button
                   onClick={() => handleExportExcel('semana_laboral')}
                   className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-white hover:bg-indigo-950/60 hover:text-indigo-300 flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <span>Semana Laboral (Lun - Vie)</span>
-                  <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded">.csv / xlsx</span>
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded">.csv</span>
                 </button>
               </div>
             )}
